@@ -28,7 +28,7 @@ You can get some Ropsten Eth from:
 
 Execute all the tests by running `npx hardhat test`.
 
-> If you want to run a specific test, simply add `.only` to it in the code file. For example `it.only("Some test").
+> If you want to run a specific test, simply add `.only` to it in the code file. For example `it.only("Some test")`.
 
 ## Etherscan verification
 

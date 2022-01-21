@@ -48,6 +48,7 @@ contract FoundersTimelock is Ownable {
         require(beneficiary_ != address(0), "FoundersTimelock: beneficiary is the zero address");
         require(vestingPeriod_ > 0, "FoundersTimelock: vestingPeriod is 0");
         require(vestingDuration_ > 0, "FoundersTimelock: vestingDuration is 0");
+        require(vestingDuration_ < 256, "FoundersTimelock: vestingDuration is bigger than 255");
 
         _token = token_;
         _beneficiary = beneficiary_;

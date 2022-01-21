@@ -32,11 +32,15 @@ describe("FoundersTimelock", function () {
       vestingDuration
     );
     await timelock.deployed();
-    // Transfer tokens to timelock
+    // Transfer tokens from owner to timelock
     await token.transfer(timelock.address, totalBalance);
   });
 
   describe("Deployment", function () {
+    it("Deployer is the owner", async () => {
+      expect(await timelock.owner()).to.equal(owner.address);
+    });
+
     it("Has a beneficiary", async function () {
       expect(await timelock.beneficiary()).to.equal(beneficiary.address);
     });
