@@ -7,6 +7,14 @@ describe("Scratch Token", function () {
   let addr1;
   let addr2;
   let addrEmpty;
+  let founder1;
+  let founder2;
+  let founder3;
+  let founder4;
+  let founder5;
+  let devWallet;
+  let opsWallet;
+  let archaWallet;
   let addrs;
 
   let token;
@@ -16,10 +24,33 @@ describe("Scratch Token", function () {
   beforeEach(async function () {
     await ethers.provider.send("hardhat_reset");
     // Get signers
-    [owner, addr1, addr2, addrEmpty, ...addrs] = await ethers.getSigners();
+    [
+      owner,
+      addr1,
+      addr2,
+      founder1,
+      founder2,
+      founder3,
+      founder4,
+      founder5,
+      devWallet,
+      opsWallet,
+      archaWallet,
+      addrEmpty,
+      ...addrs
+    ] = await ethers.getSigners();
     // Deploy contract
     const Token = await ethers.getContractFactory("ScratchToken");
-    token = await Token.deploy();
+    token = await Token.deploy(
+      founder1.address,
+      founder2.address,
+      founder3.address,
+      founder4.address,
+      founder5.address,
+      devWallet.address,
+      opsWallet.address,
+      archaWallet.address
+    );
     await token.deployed();
   });
 
@@ -43,10 +74,6 @@ describe("Scratch Token", function () {
     it("Has 100 quadrillion tokens with 9 decimal units (10^26)", async function () {
       expect(await token.maxSupply()).to.equal(maxSupplyBn);
     });
-
-    it("Sets the right owner", async function () {
-      expect(await token.owner()).to.equal(owner.address);
-    });
   });
 
   describe("Distribution", function () {
@@ -68,9 +95,7 @@ describe("Scratch Token", function () {
         "FoundersTimelock",
         timelockAddress
       );
-      expect(await timelock.beneficiary()).to.equal(
-        "0xE69Ac38CD6Da0ea9a540b47399c430131216cED3"
-      );
+      expect(await timelock.beneficiary()).to.equal(founder1.address);
       expect(await timelock.lockedBalance()).to.equal(
         maxSupplyBn.mul("250").div("10000")
       );
@@ -82,9 +107,7 @@ describe("Scratch Token", function () {
         "FoundersTimelock",
         timelockAddress
       );
-      expect(await timelock.beneficiary()).to.equal(
-        "0xe69AC38cd6da0eA9a540B47399c430131216ced4"
-      );
+      expect(await timelock.beneficiary()).to.equal(founder2.address);
       expect(await timelock.lockedBalance()).to.equal(
         maxSupplyBn.mul("250").div("10000")
       );
@@ -96,9 +119,7 @@ describe("Scratch Token", function () {
         "FoundersTimelock",
         timelockAddress
       );
-      expect(await timelock.beneficiary()).to.equal(
-        "0xE69aC38cd6dA0ea9a540b47399C430131216ced5"
-      );
+      expect(await timelock.beneficiary()).to.equal(founder3.address);
       expect(await timelock.lockedBalance()).to.equal(
         maxSupplyBn.mul("125").div("10000")
       );
@@ -110,9 +131,7 @@ describe("Scratch Token", function () {
         "FoundersTimelock",
         timelockAddress
       );
-      expect(await timelock.beneficiary()).to.equal(
-        "0xE69aC38Cd6Da0EA9a540b47399C430131216Ced6"
-      );
+      expect(await timelock.beneficiary()).to.equal(founder4.address);
       expect(await timelock.lockedBalance()).to.equal(
         maxSupplyBn.mul("250").div("10000")
       );
@@ -124,18 +143,16 @@ describe("Scratch Token", function () {
         "FoundersTimelock",
         timelockAddress
       );
-      expect(await timelock.beneficiary()).to.equal(
-        "0xE69Ac38Cd6DA0EA9a540B47399C430131216Ced7"
-      );
+      expect(await timelock.beneficiary()).to.equal(founder5.address);
       expect(await timelock.lockedBalance()).to.equal(
         maxSupplyBn.mul("175").div("10000")
       );
     });
 
     it("Transfers 5% to dev", async function () {
-      expect(
-        await token.balanceOf("0xe69AC38cD6Da0Ea9a540b47399c430131216CeD1")
-      ).to.equal(maxSupplyBn.mul("5").div("100"));
+      expect(await token.balanceOf(devWallet.address)).to.equal(
+        maxSupplyBn.mul("5").div("100")
+      );
     });
 
     it("Transfers 5% to exchange", async function () {
@@ -143,26 +160,32 @@ describe("Scratch Token", function () {
         await token.balanceOf("0xE69Ac38cd6da0Ea9a540b47399C430131216CEd2")
       ).to.equal(maxSupplyBn.mul("5").div("100"));
     });
+
+    it("Users start with empty balance", async function () {
+      expect((await token.balanceOf(addrEmpty.address)).toNumber()).to.equal(0);
+    });
   });
 
   describe("Transactions", function () {
-    it("Should transfer tokens between accounts", async function () {
+    it("Transfers tokens between accounts", async function () {
       // Transfer 50 tokens from owner to addr1
       await token.transfer(addr1.address, 50);
       expect(await token.balanceOf(addr1.address)).to.equal(50);
 
       // Transfer 50 tokens from addr1 to addr2
       // We use .connect(signer) to send a transaction from another account
-      await token.connect(addr1).transfer(addr2.address, 50);
-      expect(await token.balanceOf(addr2.address)).to.equal(50);
+      expect(await token.connect(addr1).transfer(addr2.address, 50)).to.emit(
+        token,
+        "Transfer"
+      );
     });
 
-    it("Should fail if sender doesn't have enough tokens", async function () {
+    it("Transfer fails when sender doesn't have enough tokens", async function () {
       const initialOwnerBalance = await token.balanceOf(owner.address);
 
       // Try to send 1 token from addrEmpty (0 tokens) to owner (1000000 tokens).
       // `require` will evaluate false and revert the transaction.
-      await expect(
+      expect(
         token.connect(addrEmpty).transfer(owner.address, 1)
       ).to.be.revertedWith("ERC20: transfer amount exceeds balance");
 
@@ -172,7 +195,7 @@ describe("Scratch Token", function () {
       );
     });
 
-    it("Should update balances after transfers", async function () {
+    it("Updates balances after transfers", async function () {
       const initialOwnerBalance = await token.balanceOf(owner.address);
 
       // Transfer 100 tokens from owner to addr1.
@@ -190,6 +213,69 @@ describe("Scratch Token", function () {
 
       const addr2Balance = await token.balanceOf(addr2.address);
       expect(addr2Balance).to.equal(50);
+    });
+  });
+
+  describe("Fees", function () {
+    it("Does not take fees when owner is involved", async function () {
+      const initialOwnerBalance = ethers.BigNumber.from(
+        await token.balanceOf(owner.address)
+      );
+      // Transfer 50 tokens from owner to addr1
+      await token.transfer(addr1.address, 50);
+      expect(await token.balanceOf(addr1.address)).to.equal(50);
+      // Transfer 50 tokens back from addr1 to owner
+      await token.connect(addr1).transfer(owner.address, 50);
+      expect(await token.balanceOf(owner.address)).to.equal(
+        initialOwnerBalance
+      );
+    });
+    it("Takes 6% fee between transfers", async function () {
+      await token.transfer(addr1.address, 100);
+      expect(await token.balanceOf(addr2.address)).to.equal(0);
+      // Send 100 tokens from addr1 to addr2
+      await token.connect(addr1).transfer(addr2.address, 100);
+      // Assert fees were applied
+      expect((await token.balanceOf(addr2.address)).toNumber()).to.equal(94);
+    });
+
+    it("Sends 2% fee to dev wallet", async function () {
+      const initialBalance = ethers.BigNumber.from(
+        await token.balanceOf(devWallet.address)
+      );
+      await token.transfer(addr1.address, 100);
+      // Send 100 tokens from addr1 to addr2
+      await token.connect(addr1).transfer(addr2.address, 100);
+      // Assert wallet got the fees
+      expect(await token.balanceOf(devWallet.address)).to.equal(
+        initialBalance.add(2)
+      );
+    });
+
+    it("Sends 1% fee to ops wallet", async function () {
+      const initialBalance = ethers.BigNumber.from(
+        await token.balanceOf(opsWallet.address)
+      );
+      await token.transfer(addr1.address, 100);
+      // Send 100 tokens from addr1 to addr2
+      await token.connect(addr1).transfer(addr2.address, 100);
+      // Assert wallet got the fees
+      expect(await token.balanceOf(opsWallet.address)).to.equal(
+        initialBalance.add(1)
+      );
+    });
+
+    it("Sends 1% fee to archa wallet", async function () {
+      const initialBalance = ethers.BigNumber.from(
+        await token.balanceOf(archaWallet.address)
+      );
+      await token.transfer(addr1.address, 100);
+      // Send 100 tokens from addr1 to addr2
+      await token.connect(addr1).transfer(addr2.address, 100);
+      // Assert wallet got the fees
+      expect(await token.balanceOf(archaWallet.address)).to.equal(
+        initialBalance.add(1)
+      );
     });
   });
 });
