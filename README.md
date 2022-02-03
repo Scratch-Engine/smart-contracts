@@ -30,6 +30,10 @@ Execute all the tests by running `npx hardhat test`.
 
 > If you want to run a specific test, simply add `.only` to it in the code file. For example `it.only("Some test")`.
 
+### Codecoverage
+
+View the code coverage report with `npx hardhat coverage`.
+
 ## Etherscan verification
 
 To try out Etherscan verification, you first need to deploy a contract to an Ethereum network that's supported by Etherscan, such as Ropsten.

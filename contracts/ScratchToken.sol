@@ -7,10 +7,15 @@ pragma solidity ^0.8.4;
 // Import this library to be able to use console.log
 import "hardhat/console.sol";
 
+// Openzeppelin
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+
+// Uniswap
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 import "./FoundersTimelock.sol";
 
@@ -18,124 +23,205 @@ contract ScratchToken is Context, IERC20, Ownable {
 
     using Address for address;
 
+    // ERC20
     uint256 private _totalSupply;
-    uint256 private _maxTxAmount;
-
+    uint256 private _maxSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
+    address private constant _BURN_ADDRESS = 0x0000000000000000000000000000000000000000;
 
-    mapping (address => bool) private _isExcludedFromFee;
+    // All percentages are relative to this value (1/10,000)
+    uint256 private constant _PERCENTAGE_RELATIVE_TO = 10000;
 
     /// Distribution
-    uint256 private _maxSupply;
-    struct DistributionWallet {
-        address wallet;
-        uint256 distPercentage;
-    }
-    // Percentages (in 1/10,000)
-    uint256 private _percentageRelativeTo = 10000;
+    uint256 private constant _DIST_BURN_PERCENTAGE = 1800;
+    uint256 private constant _DIST_FOUNDER1_PERCENTAGE = 250;
+    uint256 private constant _DIST_FOUNDER2_PERCENTAGE = 250;
+    uint256 private constant _DIST_FOUNDER3_PERCENTAGE = 250;
+    uint256 private constant _DIST_FOUNDER4_PERCENTAGE = 250;
+    uint256 private constant _DIST_FOUNDER5_PERCENTAGE = 250;
+    uint256 private constant _DIST_EXCHANGE_PERCENTAGE = 750;
+    uint256 private constant _DIST_DEV_PERCENTAGE = 500;
+    uint256 private constant _DIST_OPS_PERCENTAGE = 150;
 
-    uint256 private _distBurnPercentage = 1500;
-    uint256 private _distOperationsAndFounderPercentage = 1500; // TODO: What of this?
-    uint256 private _distPreSalePercentage = 1000; // TODO: What of this?
-
-    // Wallets
-    DistributionWallet private _privateInvestmentWallet = DistributionWallet(address(0xE69AC38Cd6DA0eA9A540B47399C430131216ceD0), 500);
-    DistributionWallet[5] private _foundersWallet;
-    DistributionWallet private _exchangeWallet = DistributionWallet(address(0xE69Ac38cd6da0Ea9a540b47399C430131216CEd2), 500);
-    address private _developmentWallet;
-    address private _operationsWallet;
-    address private _archaWallet;
-
-    // Founders
-    uint256 private _foundersCliffDuration = 30 days * 6; // 6 months
-    uint256 private _foundersVestingPeriod = 30 days;
-    uint8 private _foundersVestingDuration = 10; // Linear release 10 times every 30 days
-    FoundersTimelock[5] public foundersTimelocks;
+    // Founders TimeLock
+    uint256 private constant _FOUNDERS_CLIFF_DURATION = 30 days * 6; // 6 months
+    uint256 private constant _FOUNDERS_VESTING_PERIOD = 30 days; // Release every 30 days
+    uint8 private constant _FOUNDERS_VESTING_DURATION = 10; // Linear release 10 times every 30 days
+    mapping(address => FoundersTimelock) public foundersTimelocks;
     event FounderLiquidityLocked (
         address wallet,
         address timelockContract,
         uint256 tokensAmount
     );
-    // uint256 public _taxFee = 5;
-    // uint256 private _previousTaxFee = _taxFee;
-    
-    // uint256 public _liquidityFee = 5;
-    // uint256 private _previousLiquidityFee = _liquidityFee;
+
+    // Fees
+    uint256 private constant _TAX_NORMAL_DEV_PERCENTAGE = 200;
+    uint256 private constant _TAX_NORMAL_LIQUIDITY_PERCENTAGE = 200;
+    uint256 private constant _TAX_NORMAL_OPS_PERCENTAGE = 100;
+    uint256 private constant _TAX_NORMAL_ARCHA_PERCENTAGE = 100;
+    uint256 private constant _TAX_EXTRA_LIQUIDITY_PERCENTAGE = 1000;
+    uint256 private constant _TAX_EXTRA_BURN_PERCENTAGE = 500;
+    uint256 private constant _TAX_EXTRA_DEV_PERCENTAGE = 500;
+
+    mapping (address => bool) private _isExcludedFromFee;
+    address private _developmentWallet;
+    address private _operationsWallet;
+    address private _archaWallet;
+
+    // Uniswap
+    address private constant _UNISWAPV2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // Mainnet
+    uint256 private constant _UNISWAP_DEADLINE_DELAY = 60; // in seconds
+    IUniswapV2Router02 private _uniswapRouter;
+    IUniswapV2Pair private _uniswapV2Pair;
+    address private _lpTokensWallet;
+
+    // TODO: Consider dynamic values
+
+    // To recieve ETH from uniswapV2Router when swaping
+    receive() external payable {}
     
     // TODO: All wallets as parameters
     constructor (
-        address founder1_,
-        address founder2_,
-        address founder3_,
-        address founder4_,
-        address founder5_,
+        address founder1Wallet_,
+        address founder2Wallet_,
+        address founder3Wallet_,
+        address founder4Wallet_,
+        address founder5Wallet_,
         address developmentWallet_,
+        address exchangeWallet_,
         address operationsWallet_,
         address archaWallet_
-    ) {
+    ) payable {
         // TODO: Remove global storage variables
         // Review storage differences in ethereum (memory vs storage)
+        // TODO: Consider public functions
         
-        // TODO: Setup Uniswap router
-        // IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x05fF2B0DB69458A0750badebc4f9e13aDd608C7F);
-        //  // Create a uniswap pair for this new token
-        // uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
-        //     .createPair(address(this), _uniswapV2Router.WETH());
-
-        // // set the rest of the contract variables
-        // uniswapV2Router = _uniswapV2Router;
-        
-        // Exclude owner and this contract from fee
+        // Exclude addresses from fee
         _isExcludedFromFee[owner()] = true;
         _isExcludedFromFee[address(this)] = true;
+        _isExcludedFromFee[_BURN_ADDRESS] = true;
+        _isExcludedFromFee[founder1Wallet_] = true;
+        _isExcludedFromFee[founder2Wallet_] = true;
+        _isExcludedFromFee[founder3Wallet_] = true;
+        _isExcludedFromFee[founder4Wallet_] = true;
+        _isExcludedFromFee[founder5Wallet_] = true;
+        _isExcludedFromFee[developmentWallet_] = true;
+        _isExcludedFromFee[exchangeWallet_] = true;
+        _isExcludedFromFee[operationsWallet_] = true;
+        _isExcludedFromFee[archaWallet_] = true;
 
-        // Define founders in constructor since memory to storage not yet supported.
-        _foundersWallet[0] = DistributionWallet(address(founder1_), 250);
-        _foundersWallet[1] = DistributionWallet(address(founder2_), 250);
-        _foundersWallet[2] = DistributionWallet(address(founder3_), 125);
-        _foundersWallet[3] = DistributionWallet(address(founder4_), 250);
-        _foundersWallet[4] = DistributionWallet(address(founder5_), 175);
-
-        /// Mint
-        // 100 quadrillion tokens with 9 decimals
+        /// Set max supply to 100 quadrillion tokens with 9 decimals
         _maxSupply = 100 * 10**15 * 10 ** decimals();
-        _maxTxAmount = _maxSupply * 10 / 100; // Max 10% of total supply in one transaction
-        /// Distribute
-        // Burn
-        // _burn(msg.sender, _getAmountToDistribute(_distBurnPercentage));
-        // TODO: Private Investment Airdrops
-        _mint(_privateInvestmentWallet.wallet, _getAmountToDistribute(_privateInvestmentWallet.distPercentage));
+
+        /// Perform initial distribution 
         // Founders
-        for (uint256 index = 0; index < _foundersWallet.length; index++) {
-            FoundersTimelock timelockContract = new FoundersTimelock(this, _foundersWallet[index].wallet, _foundersCliffDuration, _foundersVestingPeriod, _foundersVestingDuration);
-            foundersTimelocks[index] = timelockContract;
-            _isExcludedFromFee[address(timelockContract)] = true;
-            _mint(address(timelockContract), _getAmountToDistribute(_foundersWallet[index].distPercentage));
-            emit FounderLiquidityLocked(_foundersWallet[index].wallet, address(timelockContract), _getAmountToDistribute(_foundersWallet[index].distPercentage));
-        }
-        // Operations
-        _operationsWallet = operationsWallet_;
-        // Dev wallet
-        _mint(developmentWallet_, _getAmountToDistribute(500));
-        _developmentWallet = developmentWallet_;
+        _lockFounderLiquidity(founder1Wallet_, _DIST_FOUNDER1_PERCENTAGE);
+        _lockFounderLiquidity(founder2Wallet_, _DIST_FOUNDER2_PERCENTAGE);
+        _lockFounderLiquidity(founder3Wallet_, _DIST_FOUNDER3_PERCENTAGE);
+        _lockFounderLiquidity(founder4Wallet_, _DIST_FOUNDER4_PERCENTAGE);
+        _lockFounderLiquidity(founder5Wallet_, _DIST_FOUNDER5_PERCENTAGE);
         // Exchange
-        _mint(_exchangeWallet.wallet, _getAmountToDistribute(_exchangeWallet.distPercentage));
-        // Archa
+        _mint(exchangeWallet_, _getAmountToDistribute(_DIST_EXCHANGE_PERCENTAGE));
+        _lpTokensWallet = exchangeWallet_;
+        // Dev
+        _mint(developmentWallet_, _getAmountToDistribute(_DIST_DEV_PERCENTAGE));
+        _developmentWallet = developmentWallet_;
+        // Operations
+        _mint(operationsWallet_, _getAmountToDistribute(_DIST_OPS_PERCENTAGE));
+        _operationsWallet = operationsWallet_;
+        // Archa (used later for taxes)
         _archaWallet = archaWallet_;
-        // TODO: Presale Airdrops
+        // Send the rest minus burn to owner
+        _mint(msg.sender, _maxSupply - totalSupply() - _getAmountToDistribute(_DIST_BURN_PERCENTAGE));
 
-        // TODO: Available supply to pool
-        
-        // TODO: Remove once the rest of the tokens are distributed
-        _mint(msg.sender, _maxSupply - totalSupply() - _getAmountToDistribute(_distBurnPercentage));
+        // Initialize uniswap
+        initSwap(_UNISWAPV2_ROUTER); // TODO: Constructor
+        // TODO: Enable swapAndLiquify?
     }
 
-    function _getAmountToDistribute(uint256 _distributionPercentage) private view returns (uint256) {
-        return (_maxSupply * _distributionPercentage) / _percentageRelativeTo;
+    // Constructor Internal Methods
+    function _getAmountToDistribute(uint256 distributionPercentage) private view returns (uint256) {
+        return (_maxSupply * distributionPercentage) / _PERCENTAGE_RELATIVE_TO;
     }
+
+    function _lockFounderLiquidity(address wallet, uint256 distributionPercentage) internal {
+            FoundersTimelock timelockContract = new FoundersTimelock(this, wallet, _FOUNDERS_CLIFF_DURATION, _FOUNDERS_VESTING_PERIOD, _FOUNDERS_VESTING_DURATION);
+            foundersTimelocks[wallet] = timelockContract;
+            _isExcludedFromFee[address(timelockContract)] = true;
+            _mint(address(timelockContract), _getAmountToDistribute(distributionPercentage));
+            emit FounderLiquidityLocked(wallet, address(timelockContract), _getAmountToDistribute(distributionPercentage));
+    }
+
+    // Uniswap
+    function initSwap(address routerAddress) private {
+        // Setup Uniswap router
+        _uniswapRouter = IUniswapV2Router02(routerAddress);
+         // Get uniswap pair for this token or create if needed
+        address uniswapV2Pair = IUniswapV2Factory(_uniswapRouter.factory())
+            .getPair(address(this), _uniswapRouter.WETH());
+
+        if (uniswapV2Pair == address(0)) {
+            uniswapV2Pair = IUniswapV2Factory(_uniswapRouter.factory())
+                .createPair(address(this), _uniswapRouter.WETH());
+        }
+        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
+
+        // Exclude from fee
+        _isExcludedFromFee[uniswapV2Pair] = true;
+        _isExcludedFromFee[address(_uniswapRouter)] = true;
+    }
+    /**
+     * @dev Swap `amount` tokens for ETH and send to `recipient`
+     *
+     * Emits {Transfer} event. From this contract to the token and WETH Pair.
+     */
+    function swapTokensForEth(uint256 amount, address recipient) private {
+        // Generate the uniswap pair path of Token <> WETH
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = _uniswapRouter.WETH();
+
+        // Approve token transfer
+        _approve(address(this), address(_uniswapRouter), amount);
+
+        // make the swap
+        _uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            amount,
+            0, // accept any amount of ETH
+            path,
+            recipient,
+            block.timestamp + _UNISWAP_DEADLINE_DELAY
+        );
+    }
+    /**
+     * @dev Add `ethAmount` of ETH and `tokenAmount` of tokens to the LP.
+     * Depends on the current rate for the pair between this token and WETH,
+     * `ethAmount` and `tokenAmount` might not match perfectly. 
+     * Dust(leftover) ETH or token will be refunded to this contract
+     * (usually very small quantity).
+     *
+     */
+    function addLiquidity(uint256 ethAmount, uint256 tokenAmount) private {
+        // Approve token transfer
+        _approve(address(this), address(_uniswapRouter), tokenAmount);
+
+        // Add the ETH<>Token pair to the pool.
+        _uniswapRouter.addLiquidityETH {value: ethAmount} (
+            address(this), 
+            tokenAmount, 
+            0, // ignore slippage
+            0, // ignore slippage
+            _lpTokensWallet, // the receiver of the lp tokens
+            block.timestamp + _UNISWAP_DEADLINE_DELAY
+        );
+    }
+    // TODO: Swap and liquify (+ lock)
 
     // Fees
+    function excludeFromFees(address account) public onlyOwner {
+        _isExcludedFromFee[account] = true;
+    }
 
     /**
      * @dev Moves `amount` of tokens from `sender` to `recipient`.
@@ -160,8 +246,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         require(sender != address(0), "ERC20: transfer from the zero address");
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "ScratchToken: Transfer amount must be greater than zero");
-        if(sender != owner() && recipient != owner())
-            require(amount <= _maxTxAmount, "ScratchToken: Transfer amount exceeds the maxTxAmount.");
 
         uint256 senderBalance = _balances[sender];
         require(senderBalance >= amount, "ERC20: transfer amount exceeds balance");
@@ -172,11 +256,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         // // also, don't get caught in a circular liquidity event.
         // // also, don't swap & liquify if sender is uniswap pair.
         // uint256 contractTokenBalance = balanceOf(address(this));
-        
-        // if(contractTokenBalance >= _maxTxAmount)
-        // {
-        //     contractTokenBalance = _maxTxAmount;
-        // }
         
         // bool overMinTokenBalance = contractTokenBalance >= numTokensSellToAddToLiquidity;
         // if (
@@ -207,20 +286,27 @@ contract ScratchToken is Context, IERC20, Ownable {
         if (takeFee) {
             // TODO: Swap to Eth
             // Dev fee
-            uint256 devFee = amount * 200 / _percentageRelativeTo;
-            _balances[_developmentWallet] += devFee;
-            emit Transfer(sender, _developmentWallet, devFee);
+            uint256 devFee = amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+            if(devFee > 0){ 
+                // _balances[_developmentWallet] += devFee;
+                swapTokensForEth(devFee, _developmentWallet);
+            }
             // Liquity pool
-            // TODO: Send to pool
-            uint256 liquidityFee = amount * 200 / _percentageRelativeTo;
+            uint256 liquidityFee = amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+            if (liquidityFee > 0) {
+                // TODO: Send to pool
+            }
             // Ops
-            uint256 opsFee = amount * 100 / _percentageRelativeTo;
-            _balances[_operationsWallet] += opsFee;
-            emit Transfer(sender, _operationsWallet, opsFee);
+            uint256 opsFee = amount * _TAX_NORMAL_OPS_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+            if (liquidityFee > 0) {
+                swapTokensForEth(opsFee, _operationsWallet);
+            }
             // Archa
-            uint256 archaFee = amount * 100 / _percentageRelativeTo;
-            _balances[_archaWallet] += archaFee;
-            emit Transfer(sender, _archaWallet, archaFee);
+            uint256 archaFee = amount * _TAX_NORMAL_ARCHA_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+            if (archaFee > 0) {
+                _balances[_archaWallet] += archaFee;
+                emit Transfer(sender, _archaWallet, archaFee);
+            }
             // TODO: Dynamic tax
             // Final transfer amount
             uint256 totalFees = devFee + liquidityFee + opsFee + archaFee;
@@ -283,13 +369,6 @@ contract ScratchToken is Context, IERC20, Ownable {
      */
     function maxSupply() public view returns (uint256) {
         return _maxSupply;
-    }
-
-    /**
-     * @dev Max amount of tokens per transaction, cannot be increased after deployment.
-     */
-    function maxTransactionAmount() public view returns (uint256) {
-        return _maxTxAmount;
     }
 
     // Transfer
@@ -468,3 +547,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     }
 
 }
+
+// TODO: Remove this and add to some Notion docs
+// Not added (but should be documented)
+// - Max Transaction Size (problem: not allowed in some exchanges)

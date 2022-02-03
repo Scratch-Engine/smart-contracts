@@ -37,8 +37,14 @@ module.exports = {
   solidity: "0.8.4",
   defaultNetwork: "hardhat",
   networks: {
+    hardhat: {
+      forking: {
+        enabled: true,
+        url: process.env.ALCHEMY_ETH_MAINNET_URL || "",
+      },
+    },
     ropsten: {
-      url: process.env.ROPSTEN_URL || "",
+      url: process.env.ALCHEMY_ETH_ROPSTEN_URL || "",
       accounts:
         process.env.ROPSTEN_PRIVATE_KEY !== undefined
           ? [process.env.ROPSTEN_PRIVATE_KEY]

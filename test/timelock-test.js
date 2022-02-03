@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const dotenv = require('dotenv');
 
 describe("FoundersTimelock", function () {
   let token;
@@ -28,11 +29,12 @@ describe("FoundersTimelock", function () {
       addrs[3].address,
       addrs[4].address,
       addrs[5].address,
-      addrs[6].address
+      addrs[6].address,
+      addrs[7].address
     );
     await token.deployed();
     // Get Timelock
-    const timelockAddress = await token.foundersTimelocks(0);
+    const timelockAddress = await token.foundersTimelocks(founder1.address);
     timelock = await ethers.getContractAt("FoundersTimelock", timelockAddress);
     await timelock.deployed();
   });

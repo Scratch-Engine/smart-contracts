@@ -1,8 +1,11 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+// const dotenv = require("dotenv");
 
-describe("Scratch Token", function () {
+const uniswapRouterAbi = require("./abi/IUniswapV2Router02.json").abi;
+const uniswapFactoryAbi = require("./abi/IUniswapV2Factory.json").abi;
 
+describe.only("Scratch Token", function () {
   let owner;
   let addr1;
   let addr2;
@@ -13,8 +16,10 @@ describe("Scratch Token", function () {
   let founder4;
   let founder5;
   let devWallet;
+  let exchangeWallet;
   let opsWallet;
   let archaWallet;
+  let lpWallet;
   let addrs;
 
   let token;
@@ -22,7 +27,7 @@ describe("Scratch Token", function () {
   const maxSupplyBn = ethers.BigNumber.from("100000000000000000000000000");
 
   beforeEach(async function () {
-    await ethers.provider.send("hardhat_reset");
+    // await ethers.provider.send("hardhat_reset"); // This resets the fork!
     // Get signers
     [
       owner,
@@ -34,8 +39,10 @@ describe("Scratch Token", function () {
       founder4,
       founder5,
       devWallet,
+      exchangeWallet,
       opsWallet,
       archaWallet,
+      lpWallet,
       addrEmpty,
       ...addrs
     ] = await ethers.getSigners();
@@ -48,6 +55,7 @@ describe("Scratch Token", function () {
       founder4.address,
       founder5.address,
       devWallet.address,
+      exchangeWallet.address,
       opsWallet.address,
       archaWallet.address
     );
@@ -77,20 +85,14 @@ describe("Scratch Token", function () {
   });
 
   describe("Distribution", function () {
-    it("Burns 15% of supply", async function () {
+    it("Burns 18% of supply", async function () {
       expect(await token.totalSupply()).to.equal(
-        maxSupplyBn.mul("85").div("100")
+        maxSupplyBn.mul("82").div("100")
       );
     });
 
-    it("Transfers 5% to private investment", async function () {
-      expect(
-        await token.balanceOf("0xe69ac38cd6da0ea9a540b47399c430131216ced0")
-      ).to.equal(maxSupplyBn.mul("5").div("100"));
-    });
-
     it("Transfers 2.5% to founder #1", async function () {
-      const timelockAddress = await token.foundersTimelocks(0);
+      const timelockAddress = await token.foundersTimelocks(founder1.address);
       const timelock = await ethers.getContractAt(
         "FoundersTimelock",
         timelockAddress
@@ -102,7 +104,7 @@ describe("Scratch Token", function () {
     });
 
     it("Transfers 2.5% to founder #2", async function () {
-      const timelockAddress = await token.foundersTimelocks(1);
+      const timelockAddress = await token.foundersTimelocks(founder2.address);
       const timelock = await ethers.getContractAt(
         "FoundersTimelock",
         timelockAddress
@@ -113,20 +115,20 @@ describe("Scratch Token", function () {
       );
     });
 
-    it("Transfers 1.25% to founder #3", async function () {
-      const timelockAddress = await token.foundersTimelocks(2);
+    it("Transfers 2.5% to founder #3", async function () {
+      const timelockAddress = await token.foundersTimelocks(founder3.address);
       const timelock = await ethers.getContractAt(
         "FoundersTimelock",
         timelockAddress
       );
       expect(await timelock.beneficiary()).to.equal(founder3.address);
       expect(await timelock.lockedBalance()).to.equal(
-        maxSupplyBn.mul("125").div("10000")
+        maxSupplyBn.mul("250").div("10000")
       );
     });
 
-    it("Transfers 2.50% to founder #4", async function () {
-      const timelockAddress = await token.foundersTimelocks(3);
+    it("Transfers 2.5% to founder #4", async function () {
+      const timelockAddress = await token.foundersTimelocks(founder4.address);
       const timelock = await ethers.getContractAt(
         "FoundersTimelock",
         timelockAddress
@@ -137,15 +139,21 @@ describe("Scratch Token", function () {
       );
     });
 
-    it("Transfers 1.75% to founder #5", async function () {
-      const timelockAddress = await token.foundersTimelocks(4);
+    it("Transfers 2.5% to founder #5", async function () {
+      const timelockAddress = await token.foundersTimelocks(founder5.address);
       const timelock = await ethers.getContractAt(
         "FoundersTimelock",
         timelockAddress
       );
       expect(await timelock.beneficiary()).to.equal(founder5.address);
       expect(await timelock.lockedBalance()).to.equal(
-        maxSupplyBn.mul("175").div("10000")
+        maxSupplyBn.mul("250").div("10000")
+      );
+    });
+
+    it("Transfers 7.5% to exchange", async function () {
+      expect(await token.balanceOf(exchangeWallet.address)).to.equal(
+        maxSupplyBn.mul("75").div("1000")
       );
     });
 
@@ -155,10 +163,14 @@ describe("Scratch Token", function () {
       );
     });
 
-    it("Transfers 5% to exchange", async function () {
-      expect(
-        await token.balanceOf("0xE69Ac38cd6da0Ea9a540b47399C430131216CEd2")
-      ).to.equal(maxSupplyBn.mul("5").div("100"));
+    it("Transfers 1.5% to ops", async function () {
+      expect(await token.balanceOf(opsWallet.address)).to.equal(
+        maxSupplyBn.mul("15").div("1000")
+      );
+    });
+
+    it("Transfers 0% to archa", async function () {
+      expect(await token.balanceOf(archaWallet.address)).to.equal(0);
     });
 
     it("Users start with empty balance", async function () {
@@ -275,6 +287,82 @@ describe("Scratch Token", function () {
       // Assert wallet got the fees
       expect(await token.balanceOf(archaWallet.address)).to.equal(
         initialBalance.add(1)
+      );
+    });
+  });
+
+  describe.only("Uniswap", function () {
+    it("Uniswap integration", async function () {
+      // Deploy uniswap pair
+      const routerAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+      const factoryAddress = "0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f";
+      const uniswapRouter = new ethers.Contract(
+        routerAddress,
+        uniswapRouterAbi,
+        owner
+      );
+      const uniswapFactory = new ethers.Contract(
+        factoryAddress,
+        uniswapFactoryAbi,
+        owner
+      );
+
+      /// With MINIMUM_LIQUIDITY = 10**3 and amount0 * amount1 > MINIMUM_LIQUIDITY**2, one can calculate that this requirement is fulfilled when the pair address holds just more of 1000 wei of each token.
+      const scratchForLiquidity = 10 ** 9; // If this value is too small it will fail
+      const ethForLiquidity = 1;
+
+      console.log("Create Pair");
+      // Get uniswap pair for this token 
+      const uniswapV2Pair = await uniswapFactory.getPair(
+        token.address,
+        uniswapRouter.WETH()
+      );
+      console.log(uniswapV2Pair);
+      // Create Uniswap pair
+      // const uniswapV2Pair = await uniswapFactory.getPair(
+      //   token.address,
+      //   uniswapRouter.WETH()
+      // );
+      // const pairCreatedEvent = uniswapV2Pair.events[0];
+      // console.log(pairCreatedEvent.args);
+      // const pairAddress = pairCreatedEvent.args.pair;
+
+      console.log("Approve");
+      await token.approve(uniswapRouter.address, scratchForLiquidity);
+      // await token.approve(pairAddress, scratchForLiquidity);
+
+      console.log("Scratch: " + (await token.balanceOf(owner.address)));
+      console.log("Eth: " + (await owner.getBalance()));
+
+      console.log("Add Liquidity");
+      console.log(owner.address);
+      // Add the ETH<>Token pair to the pool.
+      const initialLiquidityTx = await uniswapRouter.addLiquidityETH(
+        token.address,
+        scratchForLiquidity,
+        0, // ignore slippage
+        0, // ignore slippage
+        lpWallet.address, // the receiver of the lp tokens
+        Date.now() + 60,
+        {
+          from: owner.address,
+          value: ethForLiquidity,
+        }
+      );
+      const initialLiquidityResult = await initialLiquidityTx.wait();
+      // Add some more
+      await token.approve(uniswapRouter.address, scratchForLiquidity);
+      await uniswapRouter.addLiquidityETH(
+        token.address,
+        scratchForLiquidity,
+        0, // ignore slippage
+        0, // ignore slippage
+        lpWallet.address, // the receiver of the lp tokens
+        Date.now() + 60,
+        {
+          from: owner.address,
+          value: ethForLiquidity,
+        }
       );
     });
   });
