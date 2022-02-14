@@ -204,6 +204,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      *
      * Emits {Transfer} event. From this contract to the token and WETH Pair.
      */
+     // TODO: Reentrancyguard
     function swapTokensForEth(uint256 amount, address recipient) private {
         // console.log("swapTokensForEth");
         // console.log(_msgSender());
@@ -214,9 +215,9 @@ contract ScratchToken is Context, IERC20, Ownable {
 
         // Approve token transfer
         _approve(address(this), address(_uniswapV2Router), amount);
-        _approve(address(this), address(_uniswapV2Pair), amount);
-        _approve(address(_uniswapV2Pair), address(this), amount);
-        _approve(address(_uniswapV2Router), address(this), amount);
+        // _approve(address(this), address(_uniswapV2Pair), amount);
+        // _approve(address(_uniswapV2Pair), address(this), amount);
+        // _approve(address(_uniswapV2Router), address(this), amount);
 
         // console.log(amount);
         // console.log(recipient);
@@ -286,25 +287,6 @@ contract ScratchToken is Context, IERC20, Ownable {
 
         uint256 senderBalance = _balances[sender];
         require(senderBalance >= amount, "ERC20: transfer amount exceeds balance");
-        // below: liquidity
-
-        // // is the token balance of this contract address over the min number of
-        // // tokens that we need to initiate a swap + liquidity lock?
-        // // also, don't get caught in a circular liquidity event.
-        // // also, don't swap & liquify if sender is uniswap pair.
-        // uint256 contractTokenBalance = balanceOf(address(this));
-        
-        // bool overMinTokenBalance = contractTokenBalance >= numTokensSellToAddToLiquidity;
-        // if (
-        //     overMinTokenBalance &&
-        //     !inSwapAndLiquify &&
-        //     from != uniswapV2Pair &&
-        //     swapAndLiquifyEnabled
-        // ) {
-        //     contractTokenBalance = numTokensSellToAddToLiquidity;
-        //     //add liquidity
-        //     swapAndLiquify(contractTokenBalance);
-        // }
         
         // Indicates if fee should be deducted from transfer
         bool selling = recipient == address(_uniswapV2Pair);
@@ -342,6 +324,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                 // console.log("Taking dev fee");
                 // console.log(devFee);
                 _balances[address(this)] += devFee;
+                // TODO: Check not swapping already
                 if (buying) {
                     // Store for a later swap
                     _devFeePendingSwap += devFee;
@@ -363,6 +346,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                 // console.log("Taking ops fee");
                 // console.log(opsFee);
                 _balances[address(this)] += opsFee;
+                // TODO: Check not swapping already
                 if (buying) {
                     // Store for a later swap
                     _opsFeePendingSwap += opsFee;
