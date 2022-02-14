@@ -39,7 +39,7 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        enabled: true,
+        enabled: process.env.FORK_MAINNET === true,
         url: process.env.ALCHEMY_ETH_MAINNET_URL || "",
       },
     },
@@ -52,7 +52,7 @@ module.exports = {
     },
   },
   gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
+    enabled: process.env.REPORT_GAS === true,
     currency: "USD",
     coinmarketcap: process.env.COINMARKETCAP_API_KEY,
     token: "ETH",

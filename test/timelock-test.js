@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const dotenv = require('dotenv');
 
+const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 describe("FoundersTimelock", function () {
   let token;
   let timelock;
@@ -16,7 +16,14 @@ describe("FoundersTimelock", function () {
   const vestingDuration = 10;
   const totalBalanceBN = ethers.BigNumber.from("2500000000000000000000000");
   beforeEach(async function () {
-    await ethers.provider.send("hardhat_reset");
+    // Reset the fork
+    await ethers.provider.send("hardhat_reset", [
+      {
+        forking: {
+          jsonRpcUrl: process.env.ALCHEMY_ETH_MAINNET_URL,
+        },
+      },
+    ]);
     // Get signers
     [owner, founder1, addr1, ...addrs] = await ethers.getSigners();
     // Deploy token
@@ -30,7 +37,8 @@ describe("FoundersTimelock", function () {
       addrs[4].address,
       addrs[5].address,
       addrs[6].address,
-      addrs[7].address
+      addrs[7].address,
+      uniswapV2RouterAddress
     );
     await token.deployed();
     // Get Timelock

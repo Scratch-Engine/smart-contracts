@@ -16,7 +16,25 @@ When running tasks from the command line, specify which network you want to conn
 ```shell
 npx hardhat accounts --network ropsten
 ```
-In the above example, ropsten corresponds with the Ethereum **Testnet**.
+In the above example, ropsten corresponds with one of the Ethereum **Testnet**.
+
+> If you don't specify a network it will default to the `hardhat` network.
+
+#### Dotenv file
+Create a `.env` file on the root directory with the following parameters:
+```
+# 3rd parties
+ETHERSCAN_API_KEY=your_api_key
+COINMARKETCAP_API_KEY=your_api_key
+# Ropsten
+ALCHEMY_ETH_ROPSTEN_URL=your_url
+ROPSTEN_PRIVATE_KEY=your_private_key
+# Mainnet
+ALCHEMY_ETH_MAINNET_URL=your_url
+# Config
+REPORT_GAS=false
+FORK_MAINNET=true
+```
 
 ### Facuets
 

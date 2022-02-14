@@ -24,6 +24,8 @@ contract ScratchToken is Context, IERC20, Ownable {
     using Address for address;
 
     // ERC20
+    string private constant _NAME = "ScratchToken";
+    string private constant _SYMBOL = "SCRATCH";
     uint256 private _totalSupply;
     uint256 private _maxSupply;
     mapping(address => uint256) private _balances;
@@ -68,11 +70,13 @@ contract ScratchToken is Context, IERC20, Ownable {
     address private _developmentWallet;
     address private _operationsWallet;
     address private _archaWallet;
+    // Accumulated unswaped tokens from fee
+    uint256 private _devFeePendingSwap = 0;
+    uint256 private _opsFeePendingSwap = 0;
 
     // Uniswap
-    address private constant _UNISWAPV2_ROUTER = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D; // Mainnet
     uint256 private constant _UNISWAP_DEADLINE_DELAY = 60; // in seconds
-    IUniswapV2Router02 private _uniswapRouter;
+    IUniswapV2Router02 private _uniswapV2Router;
     IUniswapV2Pair private _uniswapV2Pair;
     address private _lpTokensWallet;
 
@@ -91,8 +95,9 @@ contract ScratchToken is Context, IERC20, Ownable {
         address developmentWallet_,
         address exchangeWallet_,
         address operationsWallet_,
-        address archaWallet_
-    ) payable {
+        address archaWallet_,
+        address uniswapV2RouterAddress_
+    ) {
         // TODO: Remove global storage variables
         // Review storage differences in ethereum (memory vs storage)
         // TODO: Consider public functions
@@ -136,7 +141,7 @@ contract ScratchToken is Context, IERC20, Ownable {
         _mint(msg.sender, _maxSupply - totalSupply() - _getAmountToDistribute(_DIST_BURN_PERCENTAGE));
 
         // Initialize uniswap
-        initSwap(_UNISWAPV2_ROUTER); // TODO: Constructor
+        initSwap(uniswapV2RouterAddress_);
         // TODO: Enable swapAndLiquify?
     }
 
@@ -146,47 +151,79 @@ contract ScratchToken is Context, IERC20, Ownable {
     }
 
     function _lockFounderLiquidity(address wallet, uint256 distributionPercentage) internal {
-            FoundersTimelock timelockContract = new FoundersTimelock(this, wallet, _FOUNDERS_CLIFF_DURATION, _FOUNDERS_VESTING_PERIOD, _FOUNDERS_VESTING_DURATION);
-            foundersTimelocks[wallet] = timelockContract;
-            _isExcludedFromFee[address(timelockContract)] = true;
-            _mint(address(timelockContract), _getAmountToDistribute(distributionPercentage));
-            emit FounderLiquidityLocked(wallet, address(timelockContract), _getAmountToDistribute(distributionPercentage));
+        FoundersTimelock timelockContract = new FoundersTimelock(this, wallet, _FOUNDERS_CLIFF_DURATION, _FOUNDERS_VESTING_PERIOD, _FOUNDERS_VESTING_DURATION);
+        foundersTimelocks[wallet] = timelockContract;
+        _isExcludedFromFee[address(timelockContract)] = true;
+        _mint(address(timelockContract), _getAmountToDistribute(distributionPercentage));
+        emit FounderLiquidityLocked(wallet, address(timelockContract), _getAmountToDistribute(distributionPercentage));
+    }
+
+    // Fees
+    /**
+     * @dev Returns the amount of the dev fee tokens pending swap
+     */
+    function devFeePendingSwap() public view virtual returns (uint256) {
+        return _devFeePendingSwap;
+    }
+    /**
+     * @dev Returns the amount of the dev fee tokens pending swap
+     */
+    function opsFeePendingSwap() public view virtual returns (uint256) {
+        return _opsFeePendingSwap;
     }
 
     // Uniswap
     function initSwap(address routerAddress) private {
         // Setup Uniswap router
-        _uniswapRouter = IUniswapV2Router02(routerAddress);
+        _uniswapV2Router = IUniswapV2Router02(routerAddress);
          // Get uniswap pair for this token or create if needed
-        address uniswapV2Pair = IUniswapV2Factory(_uniswapRouter.factory())
-            .getPair(address(this), _uniswapRouter.WETH());
+        address uniswapV2Pair_ = IUniswapV2Factory(_uniswapV2Router.factory())
+            .getPair(address(this), _uniswapV2Router.WETH());
 
-        if (uniswapV2Pair == address(0)) {
-            uniswapV2Pair = IUniswapV2Factory(_uniswapRouter.factory())
-                .createPair(address(this), _uniswapRouter.WETH());
+        if (uniswapV2Pair_ == address(0)) {
+            uniswapV2Pair_ = IUniswapV2Factory(_uniswapV2Router.factory())
+                .createPair(address(this), _uniswapV2Router.WETH());
         }
-        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair);
+        _uniswapV2Pair = IUniswapV2Pair(uniswapV2Pair_);
 
         // Exclude from fee
-        _isExcludedFromFee[uniswapV2Pair] = true;
-        _isExcludedFromFee[address(_uniswapRouter)] = true;
+        _isExcludedFromFee[address(_uniswapV2Router)] = true;
+        // _isExcludedFromFee[uniswapV2Pair_] = true;
     }
+
+
+    /**
+     * @dev Returns the address of the Token<>WETH pair.
+     */
+    function uniswapV2Pair() public view virtual returns (address) {
+        return address(_uniswapV2Pair);
+    }
+
     /**
      * @dev Swap `amount` tokens for ETH and send to `recipient`
      *
      * Emits {Transfer} event. From this contract to the token and WETH Pair.
      */
     function swapTokensForEth(uint256 amount, address recipient) private {
+        // console.log("swapTokensForEth");
+        // console.log(_msgSender());
         // Generate the uniswap pair path of Token <> WETH
         address[] memory path = new address[](2);
         path[0] = address(this);
-        path[1] = _uniswapRouter.WETH();
+        path[1] = _uniswapV2Router.WETH();
 
         // Approve token transfer
-        _approve(address(this), address(_uniswapRouter), amount);
+        _approve(address(this), address(_uniswapV2Router), amount);
+        _approve(address(this), address(_uniswapV2Pair), amount);
+        _approve(address(_uniswapV2Pair), address(this), amount);
+        _approve(address(_uniswapV2Router), address(this), amount);
 
-        // make the swap
-        _uniswapRouter.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        // console.log(amount);
+        // console.log(recipient);
+        // console.log(block.timestamp);
+        // console.log(balanceOf(address(this)));
+        // Make the swap
+        _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
             amount,
             0, // accept any amount of ETH
             path,
@@ -204,10 +241,10 @@ contract ScratchToken is Context, IERC20, Ownable {
      */
     function addLiquidity(uint256 ethAmount, uint256 tokenAmount) private {
         // Approve token transfer
-        _approve(address(this), address(_uniswapRouter), tokenAmount);
+        _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
         // Add the ETH<>Token pair to the pool.
-        _uniswapRouter.addLiquidityETH {value: ethAmount} (
+        _uniswapV2Router.addLiquidityETH {value: ethAmount} (
             address(this), 
             tokenAmount, 
             0, // ignore slippage
@@ -270,26 +307,50 @@ contract ScratchToken is Context, IERC20, Ownable {
         // }
         
         // Indicates if fee should be deducted from transfer
-        bool takeFee = true;
-        
-        // If any account belongs to _isExcludedFromFee account then remove the fee
-        if(_isExcludedFromFee[sender] || _isExcludedFromFee[recipient]){
-            takeFee = false;
-        }
-        
-        // Transfer amount, it will take tax, burn, liquidity fee
-        _tokenTransfer(sender, recipient, amount, takeFee);
+        bool selling = recipient == address(_uniswapV2Pair);
+        bool buying = sender == address(_uniswapV2Pair) && recipient != address(_uniswapV2Router);
+        // Take fees when selling or buying, and the sender or recipient are not excluded
+        bool takeFee = (selling || buying) && (!_isExcludedFromFee[sender] && !_isExcludedFromFee[recipient]);
+        // console.log("_transfer");
+        // console.log("sender");
+        // console.log(sender);
+        // console.log("recipient");
+        // console.log(recipient);
+        // console.log("amount");
+        // console.log(amount);
+        // console.log("selling");
+        // console.log(selling);
+        // console.log("buying");
+        // console.log(buying);
+        // console.log("_isExcludedFromFee[sender]");
+        // console.log(_isExcludedFromFee[sender]);
+        // console.log("_isExcludedFromFee[recipient]");
+        // console.log(_isExcludedFromFee[recipient]);
+        // console.log("takeFee");
+        // console.log(takeFee);
+        // Transfer amount, it will take fees if takeFee is true
+        _tokenTransfer(sender, recipient, amount, takeFee, buying);
     }
 
-    function _tokenTransfer(address sender, address recipient, uint256 amount, bool takeFee) private {
+    function _tokenTransfer(address sender, address recipient, uint256 amount, bool takeFee, bool buying) private {
         uint256 amountMinusFees = amount;
         if (takeFee) {
-            // TODO: Swap to Eth
+            // console.log("Taking Fees");
             // Dev fee
             uint256 devFee = amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
             if(devFee > 0){ 
-                // _balances[_developmentWallet] += devFee;
-                swapTokensForEth(devFee, _developmentWallet);
+                // console.log("Taking dev fee");
+                // console.log(devFee);
+                _balances[address(this)] += devFee;
+                if (buying) {
+                    // Store for a later swap
+                    _devFeePendingSwap += devFee;
+                }
+                else {
+                    // Swap for eth
+                    swapTokensForEth(devFee + _devFeePendingSwap, _developmentWallet);
+                    _devFeePendingSwap = 0;
+                }
             }
             // Liquity pool
             uint256 liquidityFee = amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
@@ -298,8 +359,19 @@ contract ScratchToken is Context, IERC20, Ownable {
             }
             // Ops
             uint256 opsFee = amount * _TAX_NORMAL_OPS_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
-            if (liquidityFee > 0) {
-                swapTokensForEth(opsFee, _operationsWallet);
+            if (opsFee > 0) {
+                // console.log("Taking ops fee");
+                // console.log(opsFee);
+                _balances[address(this)] += opsFee;
+                if (buying) {
+                    // Store for a later swap
+                    _opsFeePendingSwap += opsFee;
+                }
+                else {
+                    // Swap for eth
+                    swapTokensForEth(opsFee + _opsFeePendingSwap, _operationsWallet);
+                    _opsFeePendingSwap = 0;
+                }
             }
             // Archa
             uint256 archaFee = amount * _TAX_NORMAL_ARCHA_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
@@ -310,7 +382,7 @@ contract ScratchToken is Context, IERC20, Ownable {
             // TODO: Dynamic tax
             // Final transfer amount
             uint256 totalFees = devFee + liquidityFee + opsFee + archaFee;
-            require (amount > totalFees, "ScratchToken: Transfer fees exceeds transfer amount");
+            require (amount > totalFees, "ScratchToken: Token fees exceeds transfer amount");
             amountMinusFees = amount - totalFees;
         } else {
             amountMinusFees = amount;
@@ -326,7 +398,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * @dev Returns the name of the token.
      */
     function name() public pure virtual returns (string memory) {
-        return "ScratchToken";
+        return _NAME;
     }
 
     /**
@@ -334,7 +406,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * name.
      */
     function symbol() public pure virtual returns (string memory) {
-        return "SCRATCH";
+        return _SYMBOL;
     }
 
     /**
