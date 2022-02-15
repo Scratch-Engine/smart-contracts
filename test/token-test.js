@@ -25,6 +25,7 @@ describe("Scratch Token", function () {
   let exchangeWallet;
   let opsWallet;
   let archaWallet;
+  let newWallet;
   let lpWallet;
   let addrs;
 
@@ -58,6 +59,7 @@ describe("Scratch Token", function () {
       archaWallet,
       lpWallet,
       addrEmpty,
+      newWallet,
       ...addrs
     ] = await ethers.getSigners();
     // Deploy contract
@@ -536,6 +538,20 @@ describe("Scratch Token", function () {
       await buyTokenOnUniswap(owner, ethAmount);
       // Assert wallet did not get any eth
       expect(await devWallet.getBalance()).to.equal(initialBalance);
+    });
+  });
+
+  describe.only("Public Write Methods", function () {
+    it("Only owner can use them", async function () {
+      expect(
+        token.connect(addr1).setArchaWallet(newWallet.address)
+      ).to.be.revertedWith("Ownable: caller is not the owner");
+      await expect(token.setArchaWallet(newWallet.address)).to.not.be.reverted;
+    });
+    it("Changes the Archa Wallet", async function () {
+      expect(await token.archaWallet()).to.equal(archaWallet.address);
+      await token.setArchaWallet(newWallet.address);
+      expect(await token.archaWallet()).to.equal(newWallet.address);
     });
   });
 });

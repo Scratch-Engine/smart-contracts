@@ -79,6 +79,15 @@ contract ScratchToken is Context, IERC20, Ownable {
     IUniswapV2Router02 private _uniswapV2Router;
     IUniswapV2Pair private _uniswapV2Pair;
     address private _lpTokensWallet;
+    // Whether a previous call of swap process is still in process.
+    bool private _inSwap;
+    // Prevent reentrancy.
+    modifier lockTheSwap {
+        require(!_inSwap, "Currently in swap.");
+        _inSwap = true;
+        _;
+        _inSwap = false;
+    }
 
     // TODO: Consider dynamic values
 
@@ -158,6 +167,20 @@ contract ScratchToken is Context, IERC20, Ownable {
         emit FounderLiquidityLocked(wallet, address(timelockContract), _getAmountToDistribute(distributionPercentage));
     }
 
+    // Public methods
+    /**
+     * @dev Returns the address of the archa wallet.
+     */
+    function archaWallet() public view virtual returns (address) {
+        return _archaWallet;
+    }
+    /**
+     * @dev Returns the address of the Token<>WETH pair.
+     */
+    function setArchaWallet(address newWallet) public virtual onlyOwner {
+        _archaWallet = newWallet;
+    }
+
     // Fees
     /**
      * @dev Returns the amount of the dev fee tokens pending swap
@@ -188,7 +211,6 @@ contract ScratchToken is Context, IERC20, Ownable {
 
         // Exclude from fee
         _isExcludedFromFee[address(_uniswapV2Router)] = true;
-        // _isExcludedFromFee[uniswapV2Pair_] = true;
     }
 
 
@@ -204,8 +226,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      *
      * Emits {Transfer} event. From this contract to the token and WETH Pair.
      */
-     // TODO: Reentrancyguard
-    function swapTokensForEth(uint256 amount, address recipient) private {
+    function swapTokensForEth(uint256 amount, address recipient) private lockTheSwap {
         // console.log("swapTokensForEth");
         // console.log(_msgSender());
         // Generate the uniswap pair path of Token <> WETH
@@ -257,8 +278,8 @@ contract ScratchToken is Context, IERC20, Ownable {
     // TODO: Swap and liquify (+ lock)
 
     // Fees
-    function excludeFromFees(address account) public onlyOwner {
-        _isExcludedFromFee[account] = true;
+    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
+        _isExcludedFromFee[account] = isExcluded;
     }
 
     /**
@@ -324,8 +345,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                 // console.log("Taking dev fee");
                 // console.log(devFee);
                 _balances[address(this)] += devFee;
-                // TODO: Check not swapping already
-                if (buying) {
+                if (buying || _inSwap) {
                     // Store for a later swap
                     _devFeePendingSwap += devFee;
                 }
@@ -346,8 +366,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                 // console.log("Taking ops fee");
                 // console.log(opsFee);
                 _balances[address(this)] += opsFee;
-                // TODO: Check not swapping already
-                if (buying) {
+                if (buying || _inSwap) {
                     // Store for a later swap
                     _opsFeePendingSwap += opsFee;
                 }
