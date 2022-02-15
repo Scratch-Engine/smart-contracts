@@ -27,6 +27,7 @@ describe("Scratch Token", function () {
   let archaWallet;
   let newWallet;
   let lpWallet;
+  let liquidityWallet;
   let addrs;
 
   let token;
@@ -60,6 +61,7 @@ describe("Scratch Token", function () {
       lpWallet,
       addrEmpty,
       newWallet,
+      liquidityWallet,
       ...addrs
     ] = await ethers.getSigners();
     // Deploy contract
@@ -284,8 +286,12 @@ describe("Scratch Token", function () {
   //   });
   // });
 
-  describe("Uniswap Transactions", function () {
+  describe.only("Uniswap Transactions", function () {
     beforeEach(async function () {
+      // Enable all fees
+      await token.enableDevFee(true);
+      await token.enableOpsFee(true);
+      await token.enableLiquidityFee(true);
       // Deploy uniswap pair
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -376,69 +382,127 @@ describe("Scratch Token", function () {
         "IUniswapV2Pair",
         await token.uniswapV2Pair()
       );
+      const uniswapV2Router = new ethers.Contract(
+        uniswapV2RouterAddress,
+        uniswapV2RouterAbi,
+        owner
+      );
       const result = await uniswapV2Pair.getReserves();
       // console.log(result);
-      const res0 = result[0]; // Scratch
-      const res1 = result[1]; // ETH
+      const reserve0 = result[0]; // ETH
+      const reserve1 = result[1]; // SCRATCH
       // console.log(await uniswapV2Pair.token0());
       // console.log(await uniswapV2Pair.token1());
+      // console.log(result);
+      return uniswapV2Router.getAmountOut(amount, reserve1, reserve0);
 
-      return amount.mul(res1).div(res0); // return how many token0 needed to buy {amount} of token1
+      // return amount.mul(res0).div(res1.add); // return how many token0 needed to buy {amount} of token1
     }
     async function getScratchPriceForEth(amount) {
       const uniswapV2Pair = await ethers.getContractAt(
         "IUniswapV2Pair",
         await token.uniswapV2Pair()
       );
+      const uniswapV2Router = new ethers.Contract(
+        uniswapV2RouterAddress,
+        uniswapV2RouterAbi,
+        owner
+      );
       const result = await uniswapV2Pair.getReserves();
-      const res0 = result[0]; // Scratch
-      const res1 = result[1]; // ETH
-
-      return amount.mul(res0).div(res1);
+      const reserve0 = result[0]; // ETH
+      const reserve1 = result[1]; // SCRATCH
+      return uniswapV2Router.getAmountOut(amount, reserve0, reserve1);
     }
 
     it("Sell sends 2% fee to dev wallet in ETH", async function () {
+      await token.enableOpsFee(false);
+      await token.enableLiquidityFee(false);
       const initialBalance = ethers.BigNumber.from(
         await devWallet.getBalance()
       );
       const amount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
+      // Calculate 2% ETH tax
       const taxEthPrice = ethers.BigNumber.from(
         await getEthPriceForScratch(amount.mul("2").div("100"))
       );
-      // Assume a 2% slippage, so actualTax will always be bigger
-      const approxSlippage = taxEthPrice.mul("2").div("100");
-      const expectedTax = taxEthPrice.sub(approxSlippage);
       // Perform Sell
       await sellTokenOnUniswap(addr1, amount);
-      const actualTax = ethers.BigNumber.from(await devWallet.getBalance()).sub(
-        initialBalance
-      );
       // Assert wallet got more ETH
-      expect(actualTax.toNumber()).to.be.greaterThan(0);
-      // Assert fee is 2%
-      expect(actualTax.sub(expectedTax).toNumber()).to.be.greaterThan(0);
+      const devWalletIncrease = ethers.BigNumber.from(
+        await devWallet.getBalance()
+      ).sub(initialBalance);
+      expect(devWalletIncrease.toNumber()).to.be.greaterThan(0);
+      expect(devWalletIncrease).to.equal(taxEthPrice);
     });
 
     it("Sell sends 1% fee to ops wallet in ETH", async function () {
+      await token.enableDevFee(false);
+      await token.enableLiquidityFee(false);
       const initialBalance = ethers.BigNumber.from(
         await opsWallet.getBalance()
       );
-      const amount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
+      const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
+      // Calculate 1% ETH tax
       const taxEthPrice = ethers.BigNumber.from(
         await getEthPriceForScratch(amount.mul("1").div("100"))
       );
-      // Assume a 2% slippage, so actualTax will always be bigger
-      const approxSlippage = taxEthPrice.mul("2").div("100");
-      const expectedTax = taxEthPrice.sub(approxSlippage);
       // Perform Sell
       await sellTokenOnUniswap(addr1, amount);
-      const actualTax = ethers.BigNumber.from(await opsWallet.getBalance()).sub(
+      // Assert wallet got more ETH
+      const opsWalletIncrease = ethers.BigNumber.from(
+        await opsWallet.getBalance()
+      ).sub(initialBalance);
+      expect(opsWalletIncrease).to.equal(taxEthPrice);
+    });
+
+    it("Sell sends 2% fee to liquidity wallet in ETH when set and SwapAndLiquify is disabled", async function () {
+      await token.enableDevFee(false);
+      await token.enableOpsFee(false);
+      const initialBalance = await liquidityWallet.getBalance();
+      const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
+      // Set Liquidity to go to wallet
+      await token.setLiquidityWallet(liquidityWallet.address);
+      await token.enableSwapAndLiquify(false);
+      // Calculate 2% ETH tax
+      const taxEthPrice = await getEthPriceForScratch(
+        amount.mul("2").div("100")
+      );
+      // Perform Sell
+      await sellTokenOnUniswap(addr1, amount);
+      // Assert wallet got more ETH
+      const walletIncrease = (await liquidityWallet.getBalance()).sub(
         initialBalance
       );
-      // Assert wallet got more ETH
-      expect(actualTax.toNumber()).to.be.greaterThan(0);
-      // Assert fee is 1%
-      expect(actualTax.sub(expectedTax).toNumber()).to.be.greaterThan(0);
+      expect(walletIncrease).to.equal(taxEthPrice);
+    });
+
+    it("Sell does not send 2% fee to liquidity wallet when SwapAndLiquify is enabled", async function () {
+      const initialBalance = await liquidityWallet.getBalance();
+      const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
+      // Set Liquidity wallet
+      await token.setLiquidityWallet(liquidityWallet.address);
+      await token.enableSwapAndLiquify(true);
+      // Perform Sell
+      await sellTokenOnUniswap(addr1, amount);
+      // Assert wallet did not get more eth
+      expect(initialBalance).to.equal(await liquidityWallet.getBalance());
+    });
+
+    it.only("Sell keeps 2% liquidity fee in contract when SwapAndLiquify is disabled and liquidity wallet is 0", async function () {
+      const initialBalance = await liquidityWallet.getBalance();
+      const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
+      // Set Liquidity wallet
+      await token.setLiquidityWallet(
+        "0x0000000000000000000000000000000000000000"
+      );
+      await token.enableSwapAndLiquify(false);
+      // Perform Sell
+      await sellTokenOnUniswap(addr1, amount);
+      // Assert wallet did not get more eth
+      expect(initialBalance).to.equal(await liquidityWallet.getBalance());
+      expect(await token.liquidityFeePendingSwap()).to.equal(
+        amount.mul("2").div("100")
+      );
     });
 
     it("Sell sends 1% fee to archa wallet in SCRATCH", async function () {
@@ -457,75 +521,99 @@ describe("Scratch Token", function () {
     });
 
     it("Buy sends 2% fee to dev wallet in ETH", async function () {
+      await token.enableOpsFee(false);
+      await token.enableLiquidityFee(false);
+      await token.enableArchaFee(false);
       const initialBalance = ethers.BigNumber.from(
         await devWallet.getBalance()
       );
-      const amount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
-      const scratchToBeBought = ethers.BigNumber.from(
-        await getScratchPriceForEth(amount)
-      );
-      const taxEthPrice = ethers.BigNumber.from(
-        await getEthPriceForScratch(scratchToBeBought.mul("2").div("100"))
-      );
-      // Assume a 4% slippage, so actualTax will always be bigger
-      const approxSlippage = taxEthPrice.mul("4").div("100");
-      const expectedTax = taxEthPrice.sub(approxSlippage);
-      const expectedScratchToBeBought = scratchToBeBought.sub(
-        scratchToBeBought.mul("4").div("100")
+      const buyAmount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
+      const scratchFromBuy = ethers.BigNumber.from(
+        await getScratchPriceForEth(buyAmount)
       );
       // Perform buy
-      await buyTokenOnUniswap(addr1, amount);
-      // Assert dev fee is around ~2%
-      expect(
-        ethers.BigNumber.from(await token.devFeePendingSwap())
-          .sub(expectedScratchToBeBought.mul("2").div("100"))
-          .toNumber()
-      ).to.be.greaterThan(0);
+      await buyTokenOnUniswap(addr1, buyAmount);
+      // Assert dev fee pending is ~2%
+      expect(ethers.BigNumber.from(await token.devFeePendingSwap())).to.equal(
+        scratchFromBuy.mul("2").div("100")
+      );
       // Perform sell (with same amount) to trigger the swap
-      await sellTokenOnUniswap(addr1, scratchToBeBought);
-      const actualTax = ethers.BigNumber.from(await devWallet.getBalance())
-        .sub(initialBalance)
-        .div(2); // Ignore the selling fee
-      // Assert wallet got more ETH
-      expect(actualTax.toNumber()).to.be.greaterThan(0);
-      // Assert fee is 1%
-      expect(actualTax.sub(expectedTax).toNumber()).to.be.greaterThan(0);
+      const sellAmount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
+      const combinedTaxEthPrice = ethers.BigNumber.from(
+        await getEthPriceForScratch(
+          scratchFromBuy.mul("2").div("100").add(sellAmount.mul("2").div("100"))
+        )
+      );
+      await sellTokenOnUniswap(addr2, sellAmount);
+      // Assert buy fee is 2% + 2% sell fee
+      const increasedBalance = ethers.BigNumber.from(
+        await devWallet.getBalance()
+      ).sub(initialBalance);
+      expect(increasedBalance).to.equal(combinedTaxEthPrice);
     });
 
     it("Buy sends 1% fee to ops wallet in ETH", async function () {
+      await token.enableDevFee(false);
+      await token.enableLiquidityFee(false);
+      await token.enableArchaFee(false);
       const initialBalance = ethers.BigNumber.from(
         await opsWallet.getBalance()
       );
-      const amount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
-      const scratchToBeBought = ethers.BigNumber.from(
-        await getScratchPriceForEth(amount)
-      );
-      const taxEthPrice = ethers.BigNumber.from(
-        await getEthPriceForScratch(scratchToBeBought.mul("1").div("100"))
-      );
-      // Assume a 4% slippage, so actualTax will always be bigger
-      const approxSlippage = taxEthPrice.mul("4").div("100");
-      const expectedTax = taxEthPrice.sub(approxSlippage);
-      const expectedScratchToBeBought = scratchToBeBought.sub(
-        scratchToBeBought.mul("4").div("100")
+      const buyAmount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
+      const scratchFromBuy = ethers.BigNumber.from(
+        await getScratchPriceForEth(buyAmount)
       );
       // Perform buy
-      await buyTokenOnUniswap(addr1, amount);
-      // Assert opsFee is around ~1%
-      expect(
-        ethers.BigNumber.from(await token.opsFeePendingSwap())
-          .sub(expectedScratchToBeBought.mul("1").div("100"))
-          .toNumber()
-      ).to.be.greaterThan(0);
+      await buyTokenOnUniswap(addr1, buyAmount);
+      // Assert ops fee pending is ~1%
+      expect(ethers.BigNumber.from(await token.opsFeePendingSwap())).to.equal(
+        scratchFromBuy.mul("1").div("100")
+      );
       // Perform sell (with same amount) to trigger the swap
-      await sellTokenOnUniswap(addr1, scratchToBeBought);
-      const actualTax = ethers.BigNumber.from(await opsWallet.getBalance())
-        .sub(initialBalance)
-        .div(2); // Ignore the selling fee
-      // Assert wallet got more ETH
-      expect(actualTax.toNumber()).to.be.greaterThan(0);
-      // Assert fee is 1%
-      expect(actualTax.sub(expectedTax).toNumber()).to.be.greaterThan(0);
+      const sellAmount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
+      const combinedTaxEthPrice = ethers.BigNumber.from(
+        await getEthPriceForScratch(
+          scratchFromBuy.mul("1").div("100").add(sellAmount.mul("1").div("100"))
+        )
+      );
+      await sellTokenOnUniswap(addr2, sellAmount);
+      // Assert buy fee is 1% + 1% sell fee
+      const increasedBalance = ethers.BigNumber.from(
+        await opsWallet.getBalance()
+      ).sub(initialBalance);
+      expect(increasedBalance).to.equal(combinedTaxEthPrice);
+    });
+
+    it("Buy sends 1% fee to archa wallet in SCRATCH", async function () {
+      await token.enableDevFee(false);
+      await token.enableOpsFee(false);
+      await token.enableLiquidityFee(false);
+      const initialBalance = await token.balanceOf(archaWallet.address);
+      const buyAmount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
+      const scratchFromBuy = await getScratchPriceForEth(buyAmount);
+      // Perform buy
+      await buyTokenOnUniswap(addr1, buyAmount);
+      // Assert archa fee is ~1%
+      expect(await token.balanceOf(archaWallet.address)).to.equal(
+        initialBalance.add(scratchFromBuy.mul("1").div("100"))
+      );
+    });
+
+    it("Buy takes total 6% fee", async function () {
+      const initialBalance = await token.balanceOf(addr1.address);
+      const buyAmount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
+      // Calculate ETH tax
+      const scratchFromBuy = await getScratchPriceForEth(buyAmount);
+      // Perform Buy
+      await buyTokenOnUniswap(addr1, buyAmount);
+      // Assert 6% fee is taken
+      const walletIncrease = (await token.balanceOf(addr1.address)).sub(
+        initialBalance
+      );
+      // Remove last decimals since accuracy will never be 100% correct
+      expect(walletIncrease.div("10000")).to.equal(
+        scratchFromBuy.mul("94").div("100").div("10000")
+      );
     });
 
     it("Does not take fees when owner is involved", async function () {
@@ -541,7 +629,7 @@ describe("Scratch Token", function () {
     });
   });
 
-  describe.only("Public Write Methods", function () {
+  describe("Public Write Methods", function () {
     it("Only owner can use them", async function () {
       expect(
         token.connect(addr1).setArchaWallet(newWallet.address)
@@ -549,9 +637,76 @@ describe("Scratch Token", function () {
       await expect(token.setArchaWallet(newWallet.address)).to.not.be.reverted;
     });
     it("Changes the Archa Wallet", async function () {
+      await expect(token.connect(addr1).setArchaWallet(newWallet.address)).to.be
+        .reverted;
       expect(await token.archaWallet()).to.equal(archaWallet.address);
       await token.setArchaWallet(newWallet.address);
       expect(await token.archaWallet()).to.equal(newWallet.address);
+    });
+    it("Excludes from fees", async function () {
+      await expect(token.connect(addr1).excludeFromFees(newWallet.address)).to
+        .be.reverted;
+      expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
+        true
+      );
+      await token.excludeFromFees(archaWallet.address, false);
+      expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
+        false
+      );
+      await token.excludeFromFees(archaWallet.address, true);
+      expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
+        true
+      );
+    });
+    it("Toggles SwapAndLiquify", async function () {
+      await expect(token.connect(addr1).enableSwapAndLiquify(false)).to.be
+        .reverted;
+      await token.enableSwapAndLiquify(false);
+      expect(await token.swapAndLiquifyEnabled()).to.equal(false);
+      await token.enableSwapAndLiquify(true);
+      expect(await token.swapAndLiquifyEnabled()).to.equal(true);
+    });
+    it("Changes the Liquidity Wallet", async function () {
+      await expect(token.connect(addr1).setLiquidityWallet(newWallet.address))
+        .to.be.reverted;
+      expect(await token.liquidityWallet()).to.equal(
+        "0x0000000000000000000000000000000000000000"
+      );
+      await token.setLiquidityWallet(newWallet.address);
+      expect(await token.liquidityWallet()).to.equal(newWallet.address);
+    });
+    it("Enables dev fee", async function () {
+      await expect(token.connect(addr1).enableDevFee(false)).to.be.reverted;
+      expect(await token.devFeeEnabled()).to.equal(true);
+      await token.enableDevFee(false);
+      expect(await token.devFeeEnabled()).to.equal(false);
+      await token.enableDevFee(true);
+      expect(await token.devFeeEnabled()).to.equal(true);
+    });
+    it("Enables ops fee", async function () {
+      await expect(token.connect(addr1).enableOpsFee(false)).to.be.reverted;
+      expect(await token.opsFeeEnabled()).to.equal(true);
+      await token.enableOpsFee(false);
+      expect(await token.opsFeeEnabled()).to.equal(false);
+      await token.enableOpsFee(true);
+      expect(await token.opsFeeEnabled()).to.equal(true);
+    });
+    it("Enables archa fee", async function () {
+      await expect(token.connect(addr1).enableArchaFee(false)).to.be.reverted;
+      expect(await token.archaFeeEnabled()).to.equal(true);
+      await token.enableArchaFee(false);
+      expect(await token.archaFeeEnabled()).to.equal(false);
+      await token.enableArchaFee(true);
+      expect(await token.archaFeeEnabled()).to.equal(true);
+    });
+    it("Enables liquidity fee", async function () {
+      await expect(token.connect(addr1).enableLiquidityFee(false)).to.be
+        .reverted;
+      expect(await token.liquidityFeeEnabled()).to.equal(true);
+      await token.enableLiquidityFee(false);
+      expect(await token.liquidityFeeEnabled()).to.equal(false);
+      await token.enableLiquidityFee(true);
+      expect(await token.liquidityFeeEnabled()).to.equal(true);
     });
   });
 });

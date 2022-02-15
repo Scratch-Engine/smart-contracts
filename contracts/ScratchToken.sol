@@ -26,6 +26,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     // ERC20
     string private constant _NAME = "ScratchToken";
     string private constant _SYMBOL = "SCRATCH";
+    uint8 private constant _DECIMALS = 9;
     uint256 private _totalSupply;
     uint256 private _maxSupply;
     mapping(address => uint256) private _balances;
@@ -66,6 +67,11 @@ contract ScratchToken is Context, IERC20, Ownable {
     uint256 private constant _TAX_EXTRA_BURN_PERCENTAGE = 500;
     uint256 private constant _TAX_EXTRA_DEV_PERCENTAGE = 500;
 
+    bool private _devFeeEnabled = true;
+    bool private _opsFeeEnabled = true;
+    bool private _liquidityFeeEnabled = true;
+    bool private _archaFeeEnabled = true;
+
     mapping (address => bool) private _isExcludedFromFee;
     address private _developmentWallet;
     address private _operationsWallet;
@@ -73,6 +79,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     // Accumulated unswaped tokens from fee
     uint256 private _devFeePendingSwap = 0;
     uint256 private _opsFeePendingSwap = 0;
+    uint256 private _liquidityFeePendingSwap = 0;
 
     // Uniswap
     uint256 private constant _UNISWAP_DEADLINE_DELAY = 60; // in seconds
@@ -80,16 +87,23 @@ contract ScratchToken is Context, IERC20, Ownable {
     IUniswapV2Pair private _uniswapV2Pair;
     address private _lpTokensWallet;
     // Whether a previous call of swap process is still in process.
-    bool private _inSwap;
-    // Prevent reentrancy.
+    bool private _inSwap = false;
+    bool private _swapAndLiquifyEnabled = true;
+    uint256 private _minTokensBeforeSwapAndLiquify = 1 * 10 ** _DECIMALS;
+    address private _liquidityWallet = 0x0000000000000000000000000000000000000000;
+
+    // Prevent Swap Reentrancy.
     modifier lockTheSwap {
         require(!_inSwap, "Currently in swap.");
         _inSwap = true;
         _;
         _inSwap = false;
     }
-
-    // TODO: Consider dynamic values
+    event SwapAndLiquify(
+        uint256 tokensSwapped,
+        uint256 ethReceived,
+        uint256 tokensAddedToLiquidity
+    );
 
     // To recieve ETH from uniswapV2Router when swaping
     receive() external payable {}
@@ -150,8 +164,7 @@ contract ScratchToken is Context, IERC20, Ownable {
         _mint(msg.sender, _maxSupply - totalSupply() - _getAmountToDistribute(_DIST_BURN_PERCENTAGE));
 
         // Initialize uniswap
-        initSwap(uniswapV2RouterAddress_);
-        // TODO: Enable swapAndLiquify?
+        _initSwap(uniswapV2RouterAddress_);
     }
 
     // Constructor Internal Methods
@@ -167,36 +180,147 @@ contract ScratchToken is Context, IERC20, Ownable {
         emit FounderLiquidityLocked(wallet, address(timelockContract), _getAmountToDistribute(distributionPercentage));
     }
 
-    // Public methods
+    // Public owner methods
+    function isExcludedFromFees(address account) public view returns (bool) {
+        return _isExcludedFromFee[account];
+    }
+
+    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
+        _isExcludedFromFee[account] = isExcluded;
+    }
     /**
      * @dev Returns the address of the archa wallet.
      */
-    function archaWallet() public view virtual returns (address) {
+    function archaWallet() public view returns (address) {
         return _archaWallet;
     }
     /**
-     * @dev Returns the address of the Token<>WETH pair.
+     * @dev Sets the address of the archa wallet.
      */
-    function setArchaWallet(address newWallet) public virtual onlyOwner {
+    function setArchaWallet(address newWallet) public onlyOwner {
         _archaWallet = newWallet;
+    }
+
+    /**
+     * @dev Returns true if swap and liquify feature is enabled.
+     */
+    function swapAndLiquifyEnabled() public view returns (bool) {
+        return _swapAndLiquifyEnabled;
+    }
+
+    /**
+      * @dev Disables or enables the swap and liquify feature.
+      */
+    function enableSwapAndLiquify(bool isEnabled) public onlyOwner {
+        _swapAndLiquifyEnabled = isEnabled;
+    }
+
+     /**
+      * @dev Updates the minimum amount of tokens before triggering Swap and Liquify
+      */
+    function minTokensBeforeSwapAndLiquify() public view returns (uint256) {
+        return _minTokensBeforeSwapAndLiquify;
+    }
+
+     /**
+      * @dev Updates the minimum amount of tokens before triggering Swap and Liquify
+      */
+    function setMinTokensBeforeSwapAndLiquify(uint256 minTokens) public onlyOwner {
+        require(minTokens < _totalSupply, "New value must be lower than total supply.");
+        _minTokensBeforeSwapAndLiquify = minTokens;
+    }
+    /**
+     * @dev Returns the address of the liquidity wallet, or 0 if not using it.
+     */
+    function liquidityWallet() public view returns (address) {
+        return _liquidityWallet;
+    }
+    /**
+     * @dev Sets the address of the liquidity wallet.
+     */
+    function setLiquidityWallet(address newWallet) public onlyOwner {
+        _isExcludedFromFee[newWallet] = true;
+        _liquidityWallet = newWallet;
+    }
+
+    /**
+     * @dev Returns true if dev fee is enabled.
+     */
+    function devFeeEnabled() public view returns (bool) {
+        return _devFeeEnabled;
+    }
+
+    /**
+      * @dev Sets whether to collect or not the dev fee.
+      */
+    function enableDevFee(bool isEnabled) public onlyOwner {
+        _devFeeEnabled = isEnabled;
+    }
+
+    /**
+     * @dev Returns true if ops fee is enabled.
+     */
+    function opsFeeEnabled() public view returns (bool) {
+        return _opsFeeEnabled;
+    }
+
+    /**
+      * @dev Sets whether to collect or not the ops fee.
+      */
+    function enableOpsFee(bool isEnabled) public onlyOwner {
+        _opsFeeEnabled = isEnabled;
+    }
+
+    /**
+     * @dev Returns true if liquidity fee is enabled.
+     */
+    function liquidityFeeEnabled() public view returns (bool) {
+        return _liquidityFeeEnabled;
+    }
+
+    /**
+      * @dev Sets whether to collect or not the liquidity fee.
+      */
+    function enableLiquidityFee(bool isEnabled) public onlyOwner {
+        _liquidityFeeEnabled = isEnabled;
+    }
+
+    /**
+     * @dev Returns true if archa fee is enabled.
+     */
+    function archaFeeEnabled() public view returns (bool) {
+        return _archaFeeEnabled;
+    }
+
+    /**
+      * @dev Sets whether to collect or not the archa fee.
+      */
+    function enableArchaFee(bool isEnabled) public onlyOwner {
+        _archaFeeEnabled = isEnabled;
     }
 
     // Fees
     /**
      * @dev Returns the amount of the dev fee tokens pending swap
      */
-    function devFeePendingSwap() public view virtual returns (uint256) {
+    function devFeePendingSwap() public onlyOwner view returns (uint256) {
         return _devFeePendingSwap;
     }
     /**
-     * @dev Returns the amount of the dev fee tokens pending swap
+     * @dev Returns the amount of the ops fee tokens pending swap
      */
-    function opsFeePendingSwap() public view virtual returns (uint256) {
+    function opsFeePendingSwap() public onlyOwner view returns (uint256) {
         return _opsFeePendingSwap;
+    }
+    /**
+     * @dev Returns the amount of the liquidity fee tokens pending swap
+     */
+    function liquidityFeePendingSwap() public onlyOwner view returns (uint256) {
+        return _liquidityFeePendingSwap;
     }
 
     // Uniswap
-    function initSwap(address routerAddress) private {
+    function _initSwap(address routerAddress) private {
         // Setup Uniswap router
         _uniswapV2Router = IUniswapV2Router02(routerAddress);
          // Get uniswap pair for this token or create if needed
@@ -213,11 +337,10 @@ contract ScratchToken is Context, IERC20, Ownable {
         _isExcludedFromFee[address(_uniswapV2Router)] = true;
     }
 
-
     /**
      * @dev Returns the address of the Token<>WETH pair.
      */
-    function uniswapV2Pair() public view virtual returns (address) {
+    function uniswapV2Pair() public view returns (address) {
         return address(_uniswapV2Pair);
     }
 
@@ -226,7 +349,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      *
      * Emits {Transfer} event. From this contract to the token and WETH Pair.
      */
-    function swapTokensForEth(uint256 amount, address recipient) private lockTheSwap {
+    function _swapTokensForEth(uint256 amount, address recipient) private lockTheSwap {
         // console.log("swapTokensForEth");
         // console.log(_msgSender());
         // Generate the uniswap pair path of Token <> WETH
@@ -236,9 +359,6 @@ contract ScratchToken is Context, IERC20, Ownable {
 
         // Approve token transfer
         _approve(address(this), address(_uniswapV2Router), amount);
-        // _approve(address(this), address(_uniswapV2Pair), amount);
-        // _approve(address(_uniswapV2Pair), address(this), amount);
-        // _approve(address(_uniswapV2Router), address(this), amount);
 
         // console.log(amount);
         // console.log(recipient);
@@ -253,6 +373,7 @@ contract ScratchToken is Context, IERC20, Ownable {
             block.timestamp + _UNISWAP_DEADLINE_DELAY
         );
     }
+    
     /**
      * @dev Add `ethAmount` of ETH and `tokenAmount` of tokens to the LP.
      * Depends on the current rate for the pair between this token and WETH,
@@ -261,7 +382,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * (usually very small quantity).
      *
      */
-    function addLiquidity(uint256 ethAmount, uint256 tokenAmount) private {
+    function _addLiquidity(uint256 ethAmount, uint256 tokenAmount) private {
         // Approve token transfer
         _approve(address(this), address(_uniswapV2Router), tokenAmount);
 
@@ -269,18 +390,42 @@ contract ScratchToken is Context, IERC20, Ownable {
         _uniswapV2Router.addLiquidityETH {value: ethAmount} (
             address(this), 
             tokenAmount, 
-            0, // ignore slippage
-            0, // ignore slippage
+            0, // amountTokenMin
+            0, // amountETHMin
             _lpTokensWallet, // the receiver of the lp tokens
             block.timestamp + _UNISWAP_DEADLINE_DELAY
         );
     }
-    // TODO: Swap and liquify (+ lock)
+    // Swap and liquify
+    /**
+     * @dev Swap half of the amount token balance for ETH,
+     * and pair it up with the other half to add to the
+     * liquidity pool.
+     *
+     * Emits {SwapAndLiquify} event indicating the amount of tokens swapped to eth,
+     * the amount of ETH added to the LP, and the amount of tokens added to the LP.
+     */
+    function _swapAndLiquify(uint256 amount) private {
+        require(_swapAndLiquifyEnabled, "Swap And Liquify is disabled");
+        // Split the contract balance into two halves.
+        uint256 tokensToSwap = amount / 2;
+        uint256 tokensAddToLiquidity = amount - tokensToSwap;
+
+        // Contract's current ETH balance.
+        uint256 initialBalance = address(this).balance;
+
+        // Swap half of the tokens to ETH.
+        _swapTokensForEth(tokensToSwap, address(this));
+
+        // Figure out the exact amount of tokens received from swapping.
+        uint256 ethAddToLiquify = address(this).balance - initialBalance;
+
+        // Add to the LP of this token and WETH pair (half ETH and half this token).
+        _addLiquidity(ethAddToLiquify, tokensAddToLiquidity);
+        emit SwapAndLiquify(tokensToSwap, ethAddToLiquify, tokensAddToLiquidity);
+    }
 
     // Fees
-    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
-        _isExcludedFromFee[account] = isExcluded;
-    }
 
     /**
      * @dev Moves `amount` of tokens from `sender` to `recipient`.
@@ -339,48 +484,84 @@ contract ScratchToken is Context, IERC20, Ownable {
         uint256 amountMinusFees = amount;
         if (takeFee) {
             // console.log("Taking Fees");
-            // Dev fee
-            uint256 devFee = amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
-            if(devFee > 0){ 
-                // console.log("Taking dev fee");
-                // console.log(devFee);
-                _balances[address(this)] += devFee;
-                if (buying || _inSwap) {
-                    // Store for a later swap
-                    _devFeePendingSwap += devFee;
+            // Archa
+            uint256 archaFee = 0;
+            if (_archaFeeEnabled) {
+                archaFee = amount * _TAX_NORMAL_ARCHA_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                if (archaFee > 0) {
+                    _balances[_archaWallet] += archaFee;
+                    emit Transfer(sender, _archaWallet, archaFee);
                 }
-                else {
-                    // Swap for eth
-                    swapTokensForEth(devFee + _devFeePendingSwap, _developmentWallet);
-                    _devFeePendingSwap = 0;
+            }
+            // Dev fee
+            uint256 devFee = 0;
+            if (_devFeeEnabled) {
+                devFee = amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                if (devFee > 0) {
+                    // console.log("Taking dev fee");
+                    // console.log(devFee);
+                    _balances[address(this)] += devFee;
+                    if (buying || _inSwap) {
+                        // Store for a later swap
+                        _devFeePendingSwap += devFee;
+                    }
+                    else {
+                        // Swap for eth
+                        _swapTokensForEth(devFee + _devFeePendingSwap, _developmentWallet);
+                        _devFeePendingSwap = 0;
+                    }
+                }
+            }
+            // Ops
+            uint256 opsFee = 0;
+            if (_opsFeeEnabled) {
+                opsFee = amount * _TAX_NORMAL_OPS_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                if (opsFee > 0) {
+                    // console.log("Taking ops fee");
+                    // console.log(opsFee);
+                    _balances[address(this)] += opsFee;
+                    if (buying || _inSwap) {
+                        // Store for a later swap
+                        _opsFeePendingSwap += opsFee;
+                    }
+                    else {
+                        // Swap for eth
+                        _swapTokensForEth(opsFee + _opsFeePendingSwap, _operationsWallet);
+                        _opsFeePendingSwap = 0;
+                    }
                 }
             }
             // Liquity pool
-            uint256 liquidityFee = amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
-            if (liquidityFee > 0) {
-                // TODO: Send to pool
-            }
-            // Ops
-            uint256 opsFee = amount * _TAX_NORMAL_OPS_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
-            if (opsFee > 0) {
-                // console.log("Taking ops fee");
-                // console.log(opsFee);
-                _balances[address(this)] += opsFee;
-                if (buying || _inSwap) {
-                    // Store for a later swap
-                    _opsFeePendingSwap += opsFee;
+            uint256 liquidityFee = 0;
+            if (_liquidityFeeEnabled) {
+                liquidityFee = amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                if (liquidityFee > 0) {
+                    _balances[address(this)] += liquidityFee;
+                    if (buying || _inSwap) {
+                        // Store for a later swap
+                        _liquidityFeePendingSwap += liquidityFee;
+                    }
+                    else {
+                        uint256 swapAndLiquifyAmount = liquidityFee + _liquidityFeePendingSwap;
+                        if(_swapAndLiquifyEnabled) {
+                            // Swap and liquify
+                            if(swapAndLiquifyAmount > _minTokensBeforeSwapAndLiquify) {
+                                _swapAndLiquify(swapAndLiquifyAmount);
+                                _liquidityFeePendingSwap = 0;
+                            } else {
+                                // Accumulate until minimum amount is reached
+                                _liquidityFeePendingSwap += liquidityFee;
+                            }
+                        } else if (_liquidityWallet != address(0)) {
+                            // Send to liquidity wallet
+                            _swapTokensForEth(swapAndLiquifyAmount, _liquidityWallet);
+                            _liquidityFeePendingSwap = 0;
+                        } else {
+                            // Keep for later
+                            _liquidityFeePendingSwap += liquidityFee;
+                        }
+                    }
                 }
-                else {
-                    // Swap for eth
-                    swapTokensForEth(opsFee + _opsFeePendingSwap, _operationsWallet);
-                    _opsFeePendingSwap = 0;
-                }
-            }
-            // Archa
-            uint256 archaFee = amount * _TAX_NORMAL_ARCHA_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
-            if (archaFee > 0) {
-                _balances[_archaWallet] += archaFee;
-                emit Transfer(sender, _archaWallet, archaFee);
             }
             // TODO: Dynamic tax
             // Final transfer amount
@@ -422,7 +603,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * {IERC20-balanceOf} and {IERC20-transfer}.
      */
     function decimals() public pure returns (uint8) {
-        return 9;
+        return _DECIMALS;
     }
 
     /**
