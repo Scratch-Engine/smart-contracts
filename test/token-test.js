@@ -8,10 +8,11 @@ const { ethers } = require("hardhat");
 // https://github.com/Uniswap/v2-core/blob/master/contracts/UniswapV2Pair.sol
 // https://github.com/Uniswap/solidity-lib/blob/master/contracts/libraries/TransferHelper.sol
 const uniswapV2RouterAbi = require("./abi/IUniswapV2Router02.json").abi;
-const uniswapV2FactoryAbi = require("./abi/IUniswapV2Factory.json").abi;
+// const uniswapV2FactoryAbi = require("./abi/IUniswapV2Factory.json").abi;
+const uniswapV2PairAbi = require("./abi/IUniswapV2Pair.json").abi;
 const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe.only("Scratch Token", function () {
+describe("Scratch Token", function () {
   let owner;
   let addr1;
   let addr2;
@@ -292,6 +293,7 @@ describe.only("Scratch Token", function () {
       await token.enableDevFee(true);
       await token.enableOpsFee(true);
       await token.enableLiquidityFee(true);
+      await token.enableArchaFee(true);
       // Deploy uniswap pair
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -378,9 +380,10 @@ describe.only("Scratch Token", function () {
 
     // calculate price based on pair reserves
     async function getEthPriceForScratch(amount) {
-      const uniswapV2Pair = await ethers.getContractAt(
-        "IUniswapV2Pair",
-        await token.uniswapV2Pair()
+      const uniswapV2Pair = new ethers.Contract(
+        await token.uniswapV2Pair(),
+        uniswapV2PairAbi,
+        owner
       );
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -389,19 +392,22 @@ describe.only("Scratch Token", function () {
       );
       const result = await uniswapV2Pair.getReserves();
       // console.log(result);
-      const reserve0 = result[0]; // ETH
-      const reserve1 = result[1]; // SCRATCH
-      // console.log(await uniswapV2Pair.token0());
-      // console.log(await uniswapV2Pair.token1());
-      // console.log(result);
-      return uniswapV2Router.getAmountOut(amount, reserve1, reserve0);
-
+      const token0 = await uniswapV2Pair.token0();
+      // const token1 = await uniswapV2Pair.token1();
+      const reserve0 = result[0];
+      const reserve1 = result[1];
+      if (token0 === token.address) {
+        return uniswapV2Router.getAmountOut(amount, reserve0, reserve1);
+      } else {
+        return uniswapV2Router.getAmountOut(amount, reserve1, reserve0);
+      }
       // return amount.mul(res0).div(res1.add); // return how many token0 needed to buy {amount} of token1
     }
     async function getScratchPriceForEth(amount) {
-      const uniswapV2Pair = await ethers.getContractAt(
-        "IUniswapV2Pair",
-        await token.uniswapV2Pair()
+      const uniswapV2Pair = new ethers.Contract(
+        await token.uniswapV2Pair(),
+        uniswapV2PairAbi,
+        owner
       );
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -409,9 +415,14 @@ describe.only("Scratch Token", function () {
         owner
       );
       const result = await uniswapV2Pair.getReserves();
-      const reserve0 = result[0]; // ETH
-      const reserve1 = result[1]; // SCRATCH
-      return uniswapV2Router.getAmountOut(amount, reserve0, reserve1);
+      const token0 = await uniswapV2Pair.token0();
+      const reserve0 = result[0];
+      const reserve1 = result[1];
+      if (token0 === token.address) {
+        return uniswapV2Router.getAmountOut(amount, reserve1, reserve0);
+      } else {
+        return uniswapV2Router.getAmountOut(amount, reserve0, reserve1);
+      }
     }
 
     it("Sell sends 2% fee to dev wallet in ETH", async function () {
