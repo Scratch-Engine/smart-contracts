@@ -14,9 +14,9 @@ The [hardhat.config](hardhat.config.js) file contains the list of networks suppo
 When running tasks from the command line, specify which network you want to connect to by appending the flag `--network name`, for example:
 
 ```shell
-npx hardhat accounts --network ropsten
+npx hardhat accounts --network rinkeby
 ```
-In the above example, ropsten corresponds with one of the Ethereum **Testnet**.
+In the above example, rinkeby corresponds with one of the Ethereum **Testnet**.
 
 > If you don't specify a network it will default to the `hardhat` network.
 
@@ -26,21 +26,33 @@ Create a `.env` file on the root directory with the following parameters:
 # 3rd parties
 ETHERSCAN_API_KEY=your_api_key
 COINMARKETCAP_API_KEY=your_api_key
+# Rinkeby
+ALCHEMY_ETH_RINKEBY_URL=your_url
+RINKEBY_PRIVATE_KEY=your_private_key
 # Ropsten
 ALCHEMY_ETH_ROPSTEN_URL=your_url
 ROPSTEN_PRIVATE_KEY=your_private_key
 # Mainnet
 ALCHEMY_ETH_MAINNET_URL=your_url
+ETHEREUM_PRIVATE_KEY=your_private_key
 # Config
 REPORT_GAS=false
 FORK_MAINNET=true
+OPTIMIZER_ENABLED=false # Set to true when deploying
 ```
 
 ### Facuets
 
 You can get some Ropsten Eth from:
+- https://moonborrow.com/
+- https://ropsten.oregonctf.org/eth
 - https://faucet.ropsten.be/
+- https://faucet.dimensions.network/
 - https://faucet.egorfine.com/
+
+Rinkerby ETH:
+- https://faucets.chain.link/rinkeby
+- https://www.rinkebyfaucet.com/
 
 ## Testing
 
@@ -52,18 +64,22 @@ Execute all the tests by running `npx hardhat test`.
 
 View the code coverage report with `npx hardhat coverage`.
 
-## Etherscan verification
+## Deployment
 
-To try out Etherscan verification, you first need to deploy a contract to an Ethereum network that's supported by Etherscan, such as Ropsten.
+Deploy the contracts with the [deploy](scripts/deploy.js) script and specificy the network you want to use, either `rinkeby` or mainnet `ethereum`.
 
-In this project, copy the .env.example file to a file named .env, and then edit it to fill in the details. Enter your Etherscan API key, your Ropsten node URL (eg from Alchemy), and the private key of the account which will send the deployment transaction. With a valid .env file in place, first deploy your contract:
-
-```shell
-hardhat run --network ropsten scripts/deploy.js
-```
-
-Then, copy the deployment address and paste it in to replace `DEPLOYED_CONTRACT_ADDRESS` in this command:
+Perform the following cleanup steps before deployment:
+- Remove `console.log` references and the import from *all* the contracts.
+- Set `OPTIMIZER_ENABLED` to `true` on the `.env` file.
 
 ```shell
-npx hardhat verify --network ropsten DEPLOYED_CONTRACT_ADDRESS "Hello, Hardhat!"
+npx hardhat run scripts/deploy.js --network rinkerby
 ```
+
+### Etherscan verification
+
+Optionally you can verify the smart contract on Etherscan.
+
+Uncomment the calls to the `verifyTokenOnEtherscan` and `verifyTimelockOnEtherscan` methods on the [deploy](scripts/deploy.js) script to perform the verification.
+Otherwise you can also call those methods separately with the deployed addresses as parameters.
+

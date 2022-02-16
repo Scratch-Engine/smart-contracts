@@ -11,7 +11,7 @@ const uniswapV2RouterAbi = require("./abi/IUniswapV2Router02.json").abi;
 const uniswapV2FactoryAbi = require("./abi/IUniswapV2Factory.json").abi;
 const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
-describe("Scratch Token", function () {
+describe.only("Scratch Token", function () {
   let owner;
   let addr1;
   let addr2;
@@ -286,7 +286,7 @@ describe("Scratch Token", function () {
   //   });
   // });
 
-  describe.only("Uniswap Transactions", function () {
+  describe("Uniswap Transactions", function () {
     beforeEach(async function () {
       // Enable all fees
       await token.enableDevFee(true);
@@ -488,7 +488,7 @@ describe("Scratch Token", function () {
       expect(initialBalance).to.equal(await liquidityWallet.getBalance());
     });
 
-    it.only("Sell keeps 2% liquidity fee in contract when SwapAndLiquify is disabled and liquidity wallet is 0", async function () {
+    it("Sell keeps 2% liquidity fee in contract when SwapAndLiquify is disabled and liquidity wallet is 0", async function () {
       const initialBalance = await liquidityWallet.getBalance();
       const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
       // Set Liquidity wallet
