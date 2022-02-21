@@ -42,6 +42,8 @@ describe("Scratch Token", function () {
       {
         forking: {
           jsonRpcUrl: process.env.ALCHEMY_ETH_MAINNET_URL,
+          blockNumber: parseInt(process.env.FORK_BLOCK_NUMBER || ""),
+          enabled: true,
         },
       },
     ]);
@@ -105,9 +107,9 @@ describe("Scratch Token", function () {
   });
 
   describe("Distribution", function () {
-    it("Burns 18% of supply", async function () {
+    it("Burns 18.5% of supply", async function () {
       expect(await token.totalSupply()).to.equal(
-        maxSupplyBn.mul("82").div("100")
+        maxSupplyBn.mul("815").div("1000")
       );
     });
 
@@ -193,8 +195,14 @@ describe("Scratch Token", function () {
       expect(await token.balanceOf(archaWallet.address)).to.equal(0);
     });
 
+    it("Transfers 55% (all remaining tokens) to owner", async function () {
+      expect(await token.balanceOf(owner.address)).to.equal(
+        maxSupplyBn.mul("55").div("100")
+      );
+    });
+
     it("Users start with empty balance", async function () {
-      expect((await token.balanceOf(addrEmpty.address)).toNumber()).to.equal(0);
+      expect(await token.balanceOf(addrEmpty.address)).to.equal(0);
     });
   });
 
@@ -288,12 +296,16 @@ describe("Scratch Token", function () {
   // });
 
   describe("Uniswap Transactions", function () {
+    const scratchForLiquidity = ethers.BigNumber.from("100000000000000000"); // 10**8 Scratch
+    const ethForLiquidity = ethers.BigNumber.from("100000000000000000000"); // 100 ETH
     beforeEach(async function () {
       // Enable all fees
       await token.enableDevFee(true);
       await token.enableOpsFee(true);
       await token.enableLiquidityFee(true);
       await token.enableArchaFee(true);
+      await token.enableBurnFee(true);
+      await token.enableTokenStabilityProtection(true);
       // Deploy uniswap pair
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -303,8 +315,6 @@ describe("Scratch Token", function () {
 
       // Add initial liquidity (1 ETH = 10^5 tokens)
       /// With MINIMUM_LIQUIDITY = 10**3 and amount0 * amount1 > MINIMUM_LIQUIDITY**2, one can calculate that this requirement is fulfilled when the pair address holds just more of 1000 wei of each token.
-      const scratchForLiquidity = ethers.BigNumber.from("100000000000000000"); // 10**8 Scratch
-      const ethForLiquidity = ethers.BigNumber.from("100000000000000000000"); // 100 ETH
       await token.approve(uniswapV2Router.address, scratchForLiquidity);
       // await token.approve(pairAddress, scratchForLiquidity);
 
@@ -428,21 +438,19 @@ describe("Scratch Token", function () {
     it("Sell sends 2% fee to dev wallet in ETH", async function () {
       await token.enableOpsFee(false);
       await token.enableLiquidityFee(false);
-      const initialBalance = ethers.BigNumber.from(
-        await devWallet.getBalance()
-      );
+      const initialBalance = await devWallet.getBalance();
       const amount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
       // Calculate 2% ETH tax
-      const taxEthPrice = ethers.BigNumber.from(
-        await getEthPriceForScratch(amount.mul("2").div("100"))
+      const taxEthPrice = await getEthPriceForScratch(
+        amount.mul("2").div("100")
       );
       // Perform Sell
       await sellTokenOnUniswap(addr1, amount);
       // Assert wallet got more ETH
-      const devWalletIncrease = ethers.BigNumber.from(
-        await devWallet.getBalance()
-      ).sub(initialBalance);
-      expect(devWalletIncrease.toNumber()).to.be.greaterThan(0);
+      const devWalletIncrease = (await devWallet.getBalance()).sub(
+        initialBalance
+      );
+      expect(devWalletIncrease).to.not.equal(ethers.BigNumber.from("0"));
       expect(devWalletIncrease).to.equal(taxEthPrice);
     });
 
@@ -525,10 +533,8 @@ describe("Scratch Token", function () {
       await sellTokenOnUniswap(addr1, amount);
       // Assert wallet got more ETH
       expect(
-        ethers.BigNumber.from(await token.balanceOf(archaWallet.address))
-          .sub(initialBalance)
-          .toNumber()
-      ).to.equal(archaTax.toNumber());
+        (await token.balanceOf(archaWallet.address)).sub(initialBalance)
+      ).to.equal(archaTax);
     });
 
     it("Buy sends 2% fee to dev wallet in ETH", async function () {
@@ -638,6 +644,70 @@ describe("Scratch Token", function () {
       // Assert wallet did not get any eth
       expect(await devWallet.getBalance()).to.equal(initialBalance);
     });
+
+    describe("Token Stability Protection", async function () {
+      const amountToTriggerTSP = scratchForLiquidity.mul("3").div("100");
+      it("Returns the amount of Scratch in the pool", async function () {
+        expect(await token.getTokenReserves()).to.equal(scratchForLiquidity);
+      });
+
+      it("Sell sends 2% + 5% to Dev in ETH", async function () {
+        await token.enableOpsFee(false);
+        await token.enableLiquidityFee(false);
+        await token.enableArchaFee(false);
+        const initialBalance = await devWallet.getBalance();
+        // Calculate 7% ETH tax
+        const taxEthPrice = await getEthPriceForScratch(
+          amountToTriggerTSP.mul("7").div("100")
+        );
+        // Perform Sell
+        await sellTokenOnUniswap(addr1, amountToTriggerTSP);
+        // Assert wallet got more ETH
+        const devWalletIncrease = (await devWallet.getBalance()).sub(
+          initialBalance
+        );
+        expect(devWalletIncrease).to.not.equal(ethers.BigNumber.from("0"));
+        expect(devWalletIncrease).to.equal(taxEthPrice);
+      });
+
+      it("Sell sends 2% + 10% to liquidity wallet in ETH when set and SwapAndLiquify is disabled", async function () {
+        await token.enableDevFee(false);
+        await token.enableOpsFee(false);
+        const initialBalance = await liquidityWallet.getBalance();
+        // Set Liquidity to go to wallet
+        await token.setLiquidityWallet(liquidityWallet.address);
+        await token.enableSwapAndLiquify(false);
+        // Calculate 2% ETH tax
+        const taxEthPrice = await getEthPriceForScratch(
+          amountToTriggerTSP.mul("12").div("100")
+        );
+        // Perform Sell
+        await sellTokenOnUniswap(addr1, amountToTriggerTSP);
+        // Assert wallet got more ETH
+        const walletIncrease = (await liquidityWallet.getBalance()).sub(
+          initialBalance
+        );
+        expect(walletIncrease).to.equal(taxEthPrice);
+      });
+
+      it("Sell burns 5%", async function () {
+        const initialTotalSupply = await token.totalSupply();
+        // Perform Sell
+        await sellTokenOnUniswap(addr1, amountToTriggerTSP);
+        // Assert burn
+        expect(await token.totalSupply()).to.equal(
+          initialTotalSupply.sub(amountToTriggerTSP.mul("5").div("100"))
+        );
+      });
+
+      it("Buy does not trigger Token Stability Protection", async function () {
+        const initialTotalSupply = await token.totalSupply();
+        // Perform Sell
+        await buyTokenOnUniswap(addr1, ethForLiquidity.mul("3").div("100"));
+        // Assert NOT burned
+        expect(await token.totalSupply()).to.equal(initialTotalSupply);
+      });
+    });
   });
 
   describe("Public Write Methods", function () {
@@ -718,6 +788,23 @@ describe("Scratch Token", function () {
       expect(await token.liquidityFeeEnabled()).to.equal(false);
       await token.enableLiquidityFee(true);
       expect(await token.liquidityFeeEnabled()).to.equal(true);
+    });
+    it("Enables burn fee", async function () {
+      await expect(token.connect(addr1).enableBurnFee(false)).to.be.reverted;
+      expect(await token.burnFeeEnabled()).to.equal(true);
+      await token.enableBurnFee(false);
+      expect(await token.burnFeeEnabled()).to.equal(false);
+      await token.enableBurnFee(true);
+      expect(await token.burnFeeEnabled()).to.equal(true);
+    });
+    it("Enables token stability protection", async function () {
+      await expect(token.connect(addr1).enableTokenStabilityProtection(false))
+        .to.be.reverted;
+      expect(await token.tokenStabilityProtectionEnabled()).to.equal(true);
+      await token.enableTokenStabilityProtection(false);
+      expect(await token.tokenStabilityProtectionEnabled()).to.equal(false);
+      await token.enableTokenStabilityProtection(true);
+      expect(await token.tokenStabilityProtectionEnabled()).to.equal(true);
     });
   });
 });

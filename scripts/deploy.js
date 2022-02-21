@@ -6,7 +6,7 @@
 // Runtime Environment's members available in the global scope.
 const hre = require("hardhat");
 
-const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
+const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"; // PancakeSwap: 0x10ED43C718714eb63d5aA57B78B54704E256024E
 const founder1 = "0x9b01AfF345625E06B329A471faBCEC4a903A4177";
 const founder2 = "0x65636CaF77D2cEf9e69a2a7B2A9C59d3a61CA9c7";
 const founder3 = "0xf76c0889FCd48569080612Cb2cdCc856e80DaA8b";

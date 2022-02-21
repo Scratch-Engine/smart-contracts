@@ -48,6 +48,7 @@ module.exports = {
       forking: {
         enabled: process.env.FORK_MAINNET === "true",
         url: process.env.ALCHEMY_ETH_MAINNET_URL || "",
+        blockNumber: parseInt(process.env.FORK_BLOCK_NUMBER || ""),
       },
     },
     ropsten: {

@@ -5,7 +5,7 @@
 pragma solidity ^0.8.4;
 
 // Import this library to be able to use console.log
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 // Openzeppelin
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
@@ -27,17 +27,17 @@ contract ScratchToken is Context, IERC20, Ownable {
     string private constant _NAME = "ScratchToken";
     string private constant _SYMBOL = "SCRATCH";
     uint8 private constant _DECIMALS = 9;
+    uint256 private constant _MAX_SUPPLY = 100 * 10**15 * 10 ** _DECIMALS;
+    address private constant _BURN_ADDRESS = 0x0000000000000000000000000000000000000000;
     uint256 private _totalSupply;
-    uint256 private _maxSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
-    address private constant _BURN_ADDRESS = 0x0000000000000000000000000000000000000000;
 
     // All percentages are relative to this value (1/10,000)
     uint256 private constant _PERCENTAGE_RELATIVE_TO = 10000;
 
     /// Distribution
-    uint256 private constant _DIST_BURN_PERCENTAGE = 1800;
+    uint256 private constant _DIST_BURN_PERCENTAGE = 1850;
     uint256 private constant _DIST_FOUNDER1_PERCENTAGE = 250;
     uint256 private constant _DIST_FOUNDER2_PERCENTAGE = 250;
     uint256 private constant _DIST_FOUNDER3_PERCENTAGE = 250;
@@ -66,11 +66,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     uint256 private constant _TAX_EXTRA_LIQUIDITY_PERCENTAGE = 1000;
     uint256 private constant _TAX_EXTRA_BURN_PERCENTAGE = 500;
     uint256 private constant _TAX_EXTRA_DEV_PERCENTAGE = 500;
+    uint256 private constant _TOKEN_STABILITY_PROTECTION_THRESHOLD_PERCENTAGE = 200;
 
     bool private _devFeeEnabled = true;
     bool private _opsFeeEnabled = true;
     bool private _liquidityFeeEnabled = true;
     bool private _archaFeeEnabled = true;
+    bool private _burnFeeEnabled = true;
+    bool private _tokenStabilityProtectionEnabled = true;
 
     mapping (address => bool) private _isExcludedFromFee;
     address private _developmentWallet;
@@ -86,8 +89,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     IUniswapV2Router02 private _uniswapV2Router;
     IUniswapV2Pair private _uniswapV2Pair;
     address private _lpTokensWallet;
-    // Whether a previous call of swap process is still in process.
-    bool private _inSwap = false;
+    bool private _inSwap = false; // Whether a previous call of swap process is still in process.
     bool private _swapAndLiquifyEnabled = true;
     uint256 private _minTokensBeforeSwapAndLiquify = 1 * 10 ** _DECIMALS;
     address private _liquidityWallet = 0x0000000000000000000000000000000000000000;
@@ -108,7 +110,6 @@ contract ScratchToken is Context, IERC20, Ownable {
     // To recieve ETH from uniswapV2Router when swaping
     receive() external payable {}
     
-    // TODO: All wallets as parameters
     constructor (
         address founder1Wallet_,
         address founder2Wallet_,
@@ -121,9 +122,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         address archaWallet_,
         address uniswapV2RouterAddress_
     ) {
-        // TODO: Remove global storage variables
-        // Review storage differences in ethereum (memory vs storage)
-        // TODO: Consider public functions
         
         // Exclude addresses from fee
         _isExcludedFromFee[owner()] = true;
@@ -138,9 +136,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         _isExcludedFromFee[exchangeWallet_] = true;
         _isExcludedFromFee[operationsWallet_] = true;
         _isExcludedFromFee[archaWallet_] = true;
-
-        /// Set max supply to 100 quadrillion tokens with 9 decimals
-        _maxSupply = 100 * 10**15 * 10 ** decimals();
 
         /// Perform initial distribution 
         // Founders
@@ -160,16 +155,19 @@ contract ScratchToken is Context, IERC20, Ownable {
         _operationsWallet = operationsWallet_;
         // Archa (used later for taxes)
         _archaWallet = archaWallet_;
+        // Burn
+        uint256 burnAmount = _getAmountToDistribute(_DIST_BURN_PERCENTAGE);
+        emit Transfer(address(0), _BURN_ADDRESS, burnAmount);
         // Send the rest minus burn to owner
-        _mint(msg.sender, _maxSupply - totalSupply() - _getAmountToDistribute(_DIST_BURN_PERCENTAGE));
+        _mint(msg.sender, _MAX_SUPPLY - totalSupply() - burnAmount);
 
         // Initialize uniswap
         _initSwap(uniswapV2RouterAddress_);
     }
 
     // Constructor Internal Methods
-    function _getAmountToDistribute(uint256 distributionPercentage) private view returns (uint256) {
-        return (_maxSupply * distributionPercentage) / _PERCENTAGE_RELATIVE_TO;
+    function _getAmountToDistribute(uint256 distributionPercentage) private pure returns (uint256) {
+        return (_MAX_SUPPLY * distributionPercentage) / _PERCENTAGE_RELATIVE_TO;
     }
 
     function _lockFounderLiquidity(address wallet, uint256 distributionPercentage) internal {
@@ -299,6 +297,34 @@ contract ScratchToken is Context, IERC20, Ownable {
         _archaFeeEnabled = isEnabled;
     }
 
+    /**
+     * @dev Returns true if the burn fee is enabled.
+     */
+    function burnFeeEnabled() public view returns (bool) {
+        return _burnFeeEnabled;
+    }
+
+    /**
+      * @dev Sets whether to enable or not the burn fee.
+      */
+    function enableBurnFee(bool isEnabled) public onlyOwner {
+        _burnFeeEnabled = isEnabled;
+    }
+
+    /**
+     * @dev Returns true if token stability protection is enabled.
+     */
+    function tokenStabilityProtectionEnabled() public view returns (bool) {
+        return _tokenStabilityProtectionEnabled;
+    }
+
+    /**
+      * @dev Sets whether to enable the token stability protection.
+      */
+    function enableTokenStabilityProtection(bool isEnabled) public onlyOwner {
+        _tokenStabilityProtectionEnabled = isEnabled;
+    }
+
     // Fees
     /**
      * @dev Returns the amount of the dev fee tokens pending swap
@@ -350,8 +376,6 @@ contract ScratchToken is Context, IERC20, Ownable {
      * Emits {Transfer} event. From this contract to the token and WETH Pair.
      */
     function _swapTokensForEth(uint256 amount, address recipient) private lockTheSwap {
-        // console.log("swapTokensForEth");
-        // console.log(_msgSender());
         // Generate the uniswap pair path of Token <> WETH
         address[] memory path = new address[](2);
         path[0] = address(this);
@@ -360,10 +384,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         // Approve token transfer
         _approve(address(this), address(_uniswapV2Router), amount);
 
-        // console.log(amount);
-        // console.log(recipient);
-        // console.log(block.timestamp);
-        // console.log(balanceOf(address(this)));
         // Make the swap
         _uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
             amount,
@@ -425,7 +445,17 @@ contract ScratchToken is Context, IERC20, Ownable {
         emit SwapAndLiquify(tokensToSwap, ethAddToLiquify, tokensAddToLiquidity);
     }
 
-    // Fees
+    function getTokenReserves() public view returns (uint256) {
+        uint112 reserve;
+        if (_uniswapV2Pair.token0() == address(this))
+            (reserve,,) = _uniswapV2Pair.getReserves();
+        else
+            (,reserve,) = _uniswapV2Pair.getReserves();
+
+        return uint256(reserve);
+    }
+
+    // Transfer
 
     /**
      * @dev Moves `amount` of tokens from `sender` to `recipient`.
@@ -451,31 +481,13 @@ contract ScratchToken is Context, IERC20, Ownable {
         require(recipient != address(0), "ERC20: transfer to the zero address");
         require(amount > 0, "ScratchToken: Transfer amount must be greater than zero");
 
-        uint256 senderBalance = _balances[sender];
-        require(senderBalance >= amount, "ERC20: transfer amount exceeds balance");
+        require(_balances[sender] >= amount, "ERC20: transfer amount exceeds balance");
         
         // Indicates if fee should be deducted from transfer
         bool selling = recipient == address(_uniswapV2Pair);
         bool buying = sender == address(_uniswapV2Pair) && recipient != address(_uniswapV2Router);
         // Take fees when selling or buying, and the sender or recipient are not excluded
         bool takeFee = (selling || buying) && (!_isExcludedFromFee[sender] && !_isExcludedFromFee[recipient]);
-        // console.log("_transfer");
-        // console.log("sender");
-        // console.log(sender);
-        // console.log("recipient");
-        // console.log(recipient);
-        // console.log("amount");
-        // console.log(amount);
-        // console.log("selling");
-        // console.log(selling);
-        // console.log("buying");
-        // console.log(buying);
-        // console.log("_isExcludedFromFee[sender]");
-        // console.log(_isExcludedFromFee[sender]);
-        // console.log("_isExcludedFromFee[recipient]");
-        // console.log(_isExcludedFromFee[recipient]);
-        // console.log("takeFee");
-        // console.log(takeFee);
         // Transfer amount, it will take fees if takeFee is true
         _tokenTransfer(sender, recipient, amount, takeFee, buying);
     }
@@ -483,7 +495,18 @@ contract ScratchToken is Context, IERC20, Ownable {
     function _tokenTransfer(address sender, address recipient, uint256 amount, bool takeFee, bool buying) private {
         uint256 amountMinusFees = amount;
         if (takeFee) {
-            // console.log("Taking Fees");
+            // Maybe trigger token stability protection
+            uint256 extraLiquidityFee = 0;
+            uint256 extraDevFee = 0;
+            uint256 extraBurnFee = 0;
+            if (!buying && _tokenStabilityProtectionEnabled && amount >= (getTokenReserves() * _TOKEN_STABILITY_PROTECTION_THRESHOLD_PERCENTAGE / _PERCENTAGE_RELATIVE_TO)) {
+                // Liquidity fee
+                extraLiquidityFee = amount * _TAX_EXTRA_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                // Dev fee
+                extraDevFee = amount * _TAX_EXTRA_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                // Burn
+                extraBurnFee = amount * _TAX_EXTRA_BURN_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+            }
             // Archa
             uint256 archaFee = 0;
             if (_archaFeeEnabled) {
@@ -496,10 +519,8 @@ contract ScratchToken is Context, IERC20, Ownable {
             // Dev fee
             uint256 devFee = 0;
             if (_devFeeEnabled) {
-                devFee = amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                devFee = (amount * _TAX_NORMAL_DEV_PERCENTAGE / _PERCENTAGE_RELATIVE_TO) + extraDevFee;
                 if (devFee > 0) {
-                    // console.log("Taking dev fee");
-                    // console.log(devFee);
                     _balances[address(this)] += devFee;
                     if (buying || _inSwap) {
                         // Store for a later swap
@@ -517,8 +538,6 @@ contract ScratchToken is Context, IERC20, Ownable {
             if (_opsFeeEnabled) {
                 opsFee = amount * _TAX_NORMAL_OPS_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
                 if (opsFee > 0) {
-                    // console.log("Taking ops fee");
-                    // console.log(opsFee);
                     _balances[address(this)] += opsFee;
                     if (buying || _inSwap) {
                         // Store for a later swap
@@ -534,7 +553,7 @@ contract ScratchToken is Context, IERC20, Ownable {
             // Liquity pool
             uint256 liquidityFee = 0;
             if (_liquidityFeeEnabled) {
-                liquidityFee = amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO;
+                liquidityFee = (amount * _TAX_NORMAL_LIQUIDITY_PERCENTAGE / _PERCENTAGE_RELATIVE_TO) + extraLiquidityFee;
                 if (liquidityFee > 0) {
                     _balances[address(this)] += liquidityFee;
                     if (buying || _inSwap) {
@@ -563,9 +582,15 @@ contract ScratchToken is Context, IERC20, Ownable {
                     }
                 }
             }
-            // TODO: Dynamic tax
+            // Burn
+            uint256 burnFee = 0;
+            if(_burnFeeEnabled && extraBurnFee > 0) {
+                burnFee = extraBurnFee;
+                _totalSupply -= burnFee;
+                emit Transfer(sender, _BURN_ADDRESS, burnFee);
+            }
             // Final transfer amount
-            uint256 totalFees = devFee + liquidityFee + opsFee + archaFee;
+            uint256 totalFees = devFee + liquidityFee + opsFee + archaFee + burnFee;
             require (amount > totalFees, "ScratchToken: Token fees exceeds transfer amount");
             amountMinusFees = amount - totalFees;
         } else {
@@ -623,8 +648,8 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Max supply of the token, cannot be increased after deployment.
      */
-    function maxSupply() public view returns (uint256) {
-        return _maxSupply;
+    function maxSupply() public pure returns (uint256) {
+        return _MAX_SUPPLY;
     }
 
     // Transfer
@@ -803,7 +828,3 @@ contract ScratchToken is Context, IERC20, Ownable {
     }
 
 }
-
-// TODO: Remove this and add to some Notion docs
-// Not added (but should be documented)
-// - Max Transaction Size (problem: not allowed in some exchanges)
