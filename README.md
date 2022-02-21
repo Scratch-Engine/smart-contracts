@@ -65,6 +65,15 @@ Execute all the tests by running `npx hardhat test`.
 
 View the code coverage report with `npx hardhat coverage`.
 
+### Gast costs
+
+View the gas costs in ETH and USD when running `npx hardhat test`.
+Needs to be enabled in the `.env` file with `REPORT_GAS=true`.
+
+### Contract Size
+
+View the contract sizes by running `npx hardhat size-contracts`.
+
 ## Deployment
 
 Deploy the contracts with the [deploy](scripts/deploy.js) script and specificy the network you want to use, either `rinkeby` or mainnet `ethereum`.
