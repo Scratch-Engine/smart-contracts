@@ -16,20 +16,13 @@ const exchange = "0x2718758A03FdCe9e6e23D5c6b3Fd270b26E0cfC5";
 const dev = "0xD001C86042aef72F519A56d8Bb02D3b3c2c87B20";
 const ops = "0xa353de1C926e136B6ccb516f31c38cF40004aCCE";
 const archa = "0x7b8404be6480c44e25ee8c8446e408b1bfc92451";
+const owner = "0x64F66266DC29D3389AEDB2d460054647bD94c342";
 
 async function main() {
-  // Hardhat always runs the compile task when running scripts with its command
-  // line interface.
-  //
-  // If this script is run directly using `node` you may want to call compile
-  // manually to make sure everything is compiled
-  // await hre.run('compile');
-
-  // We get the contract to deploy
-
   console.log("Deploying...");
   const Token = await hre.ethers.getContractFactory("ScratchToken");
   const token = await Token.deploy(
+    owner,
     founder1,
     founder2,
     founder3,
@@ -58,34 +51,40 @@ async function main() {
   console.log("Founder4 timelock deployed to:", timelock4);
   console.log("Founder5 timelock deployed to:", timelock5);
 
-  // Uncomment the lines below to perform Etherscan verification
-  // await new Promise(resolve => setTimeout(resolve, 2 * 60 * 1000)); // Wait a couple minutes before verifying
-  // await verifyTokenOnEtherscan(token.address);
-  // await verifyTimelockOnEtherscan(token.address, timelock1.address);
-  // await verifyTimelockOnEtherscan(token.address, timelock2.address);
-  // await verifyTimelockOnEtherscan(token.address, timelock3.address);
-  // await verifyTimelockOnEtherscan(token.address, timelock4.address);
-  // await verifyTimelockOnEtherscan(token.address, timelock5.address);
+  // Perform Etherscan verification
+  console.log("Awaiting some time before etherscan verification...");
+  await new Promise(resolve => setTimeout(resolve, 2 * 60 * 1000)); // Wait a couple minutes before verifying
+  await verifyTokenOnEtherscan(token.address);
+  await verifyTimelockOnEtherscan(token.address, timelock1);
+  await verifyTimelockOnEtherscan(token.address, timelock2);
+  await verifyTimelockOnEtherscan(token.address, timelock3);
+  await verifyTimelockOnEtherscan(token.address, timelock4);
+  await verifyTimelockOnEtherscan(token.address, timelock5);
 
 }
 
 async function verifyTokenOnEtherscan(tokenAddress) {
   console.log("Verifying token on etherscan...");
-  await hre.run("verify:verify", {
-    address: tokenAddress,
-    constructorArguments: [
-      founder1,
-      founder2,
-      founder3,
-      founder4,
-      founder5,
-      dev,
-      exchange,
-      ops,
-      archa,
-      uniswapV2RouterAddress
-    ],
-  });
+  try {
+    await hre.run("verify:verify", {
+      address: tokenAddress,
+      constructorArguments: [
+        owner,
+        founder1,
+        founder2,
+        founder3,
+        founder4,
+        founder5,
+        dev,
+        exchange,
+        ops,
+        archa,
+        uniswapV2RouterAddress
+      ],
+    });
+  } catch (e) {
+    console.log("Token verification failed:", e);
+  }
 }
 
 async function verifyTimelockOnEtherscan(tokenAddress, timelockAddress) {
@@ -98,24 +97,32 @@ async function verifyTimelockOnEtherscan(tokenAddress, timelockAddress) {
     "ScratchToken",
     tokenAddress
   );
-  await hre.run("verify:verify", {
-    address: timelockAddress,
-    constructorArguments: [
-      token.address,
-      await timelock.beneficiary(),
-      6 * 30 * 24 * 60 * 60, // 6 months in UNIX
-      await timelock.vestingPeriod(),
-      await timelock.vestingDuration(),
-    ],
-  });
+  try {
+    await hre.run("verify:verify", {
+      address: timelockAddress,
+      constructorArguments: [
+        token.address,
+        await timelock.beneficiary(),
+        6 * 30 * 24 * 60 * 60, // 6 months in UNIX
+        await timelock.vestingPeriod(),
+        await timelock.vestingDuration(),
+      ],
+    });
+  } catch (e) {
+    console.log("Timelock verification failed:", e);
+  }
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
+// Run the script
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+// verifyTokenOnEtherscan("0xfD9eb2427C73da6DcE5f3C07eEcC9faca8f0AD0a").catch((error) => {
+//     console.error(error);
+//     process.exitCode = 1;
+// });
 
 // verifyTimelockOnEtherscan("0xF7DF8Db0176de11bDD358fc381D316baf82d31d1", "0x7C386e2DEE1192282f9D7f50d6Dc418b19948c00").catch((error) => {
 //     console.error(error);

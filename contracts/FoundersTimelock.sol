@@ -1,8 +1,16 @@
-//SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: UNLICENSED
+/** 
+ *   Copyright © 2022 Scratch Engine LLC. All rights reserved.
+ *   Limited license is afforded to Etherscan, in accordance with its Terms of Use, 
+ *   in order to publish this material.
+ *   In connection with the foregoing, redistribution and use on the part of Etherscan,
+ *   in source and binary forms, without modification, are permitted, 
+ *   provided that such redistributions of source code retain the foregoing copyright notice
+ *   and this disclaimer.
+ */
 
 pragma solidity ^0.8.4;
 
-// Import this library to be able to use console.log
 // import "hardhat/console.sol";
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -55,7 +63,8 @@ contract FoundersTimelock is Ownable {
 
         _token = token_;
         _beneficiary = beneficiary_;
-        _cliff = block.timestamp.add(cliffDuration_);
+        // solhint-disable-next-line not-rely-on-time
+        _cliff = block.timestamp.add(cliffDuration_); // safe the use with the 15-seconds rule 
         _vestingPeriod = vestingPeriod_;
         _vestingDuration = vestingDuration_;
     }
@@ -136,7 +145,7 @@ contract FoundersTimelock is Ownable {
 
         if (block.timestamp < _cliff) {
             return 0;
-        } else if (block.timestamp >= _cliff.add(_vestingDuration * _vestingPeriod)) {
+        } else if (block.timestamp >= _cliff.add(_vestingDuration * _vestingPeriod)) { // solhint-disable-line not-rely-on-time
             return totalBalance;
         } else {
             // Vesting period

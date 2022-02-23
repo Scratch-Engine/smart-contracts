@@ -1,10 +1,16 @@
-//SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: UNLICENSED
+/** 
+ *   Copyright © 2022 Scratch Engine LLC. All rights reserved.
+ *   Limited license is afforded to Etherscan, in accordance with its Terms of Use, 
+ *   in order to publish this material.
+ *   In connection with the foregoing, redistribution and use on the part of Etherscan,
+ *   in source and binary forms, without modification, are permitted, 
+ *   provided that such redistributions of source code retain the foregoing copyright notice
+ *   and this disclaimer.
+ */
 
-// Solidity files have to start with this pragma.
-// It will be used by the Solidity compiler to validate its version.
 pragma solidity ^0.8.4;
 
-// Import this library to be able to use console.log
 // import "hardhat/console.sol";
 
 // Openzeppelin
@@ -19,6 +25,11 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 import "./FoundersTimelock.sol";
 
+/**
+ * @title ScratchToken
+ * @dev An ERC20 token featuring fees-on-transfer for buy/sell transactions
+ * and increased fees on larger sell transactions.
+ */
 contract ScratchToken is Context, IERC20, Ownable {
 
     using Address for address;
@@ -28,7 +39,6 @@ contract ScratchToken is Context, IERC20, Ownable {
     string private constant _SYMBOL = "SCRATCH";
     uint8 private constant _DECIMALS = 9;
     uint256 private constant _MAX_SUPPLY = 100 * 10**15 * 10 ** _DECIMALS;
-    address private constant _BURN_ADDRESS = 0x0000000000000000000000000000000000000000;
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -94,23 +104,34 @@ contract ScratchToken is Context, IERC20, Ownable {
     uint256 private _minTokensBeforeSwapAndLiquify = 1 * 10 ** _DECIMALS;
     address private _liquidityWallet = 0x0000000000000000000000000000000000000000;
 
-    // Prevent Swap Reentrancy.
+    // Events
+    event SwapAndLiquify(
+        uint256 tokensSwapped,
+        uint256 ethReceived,
+        uint256 tokensAddedToLiquidity
+    );
+    event SwapAndLiquifyEnabledUpdated(bool enabled);
+    event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
+    event DevFeeEnabledUpdated(bool enabled);
+    event OpsFeeEnabledUpdated(bool enabled);
+    event LiquidityFeeEnabledUpdated(bool enabled);
+    event ArchaFeeEnabledUpdated(bool enabled);
+    event BurnFeeEnabledUpdated(bool enabled);
+    event TokenStabilityProtectionEnabledUpdated(bool enabled);
+
+    // Modifiers
     modifier lockTheSwap {
         require(!_inSwap, "Currently in swap.");
         _inSwap = true;
         _;
         _inSwap = false;
     }
-    event SwapAndLiquify(
-        uint256 tokensSwapped,
-        uint256 ethReceived,
-        uint256 tokensAddedToLiquidity
-    );
 
-    // To recieve ETH from uniswapV2Router when swaping
+    // Fallback function to recieve ETH from uniswapV2Router when swaping
     receive() external payable {}
     
     constructor (
+        address owner,
         address founder1Wallet_,
         address founder2Wallet_,
         address founder3Wallet_,
@@ -124,9 +145,8 @@ contract ScratchToken is Context, IERC20, Ownable {
     ) {
         
         // Exclude addresses from fee
-        _isExcludedFromFee[owner()] = true;
+        _isExcludedFromFee[owner] = true;
         _isExcludedFromFee[address(this)] = true;
-        _isExcludedFromFee[_BURN_ADDRESS] = true;
         _isExcludedFromFee[founder1Wallet_] = true;
         _isExcludedFromFee[founder2Wallet_] = true;
         _isExcludedFromFee[founder3Wallet_] = true;
@@ -157,12 +177,15 @@ contract ScratchToken is Context, IERC20, Ownable {
         _archaWallet = archaWallet_;
         // Burn
         uint256 burnAmount = _getAmountToDistribute(_DIST_BURN_PERCENTAGE);
-        emit Transfer(address(0), _BURN_ADDRESS, burnAmount);
-        // Send the rest minus burn to owner
-        _mint(msg.sender, _MAX_SUPPLY - totalSupply() - burnAmount);
+        emit Transfer(address(0), address(0), burnAmount);
+        // Send the rest of supply minus burn to owner
+        _mint(owner, _MAX_SUPPLY - totalSupply() - burnAmount);
 
         // Initialize uniswap
         _initSwap(uniswapV2RouterAddress_);
+
+        // Transfer ownership to owner
+        transferOwnership(owner);
     }
 
     // Constructor Internal Methods
@@ -211,6 +234,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableSwapAndLiquify(bool isEnabled) public onlyOwner {
         _swapAndLiquifyEnabled = isEnabled;
+        emit SwapAndLiquifyEnabledUpdated(isEnabled);
     }
 
      /**
@@ -226,6 +250,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     function setMinTokensBeforeSwapAndLiquify(uint256 minTokens) public onlyOwner {
         require(minTokens < _totalSupply, "New value must be lower than total supply.");
         _minTokensBeforeSwapAndLiquify = minTokens;
+        emit MinTokensBeforeSwapUpdated(minTokens);
     }
     /**
      * @dev Returns the address of the liquidity wallet, or 0 if not using it.
@@ -253,6 +278,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableDevFee(bool isEnabled) public onlyOwner {
         _devFeeEnabled = isEnabled;
+        emit DevFeeEnabledUpdated(isEnabled);
     }
 
     /**
@@ -267,6 +293,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableOpsFee(bool isEnabled) public onlyOwner {
         _opsFeeEnabled = isEnabled;
+        emit OpsFeeEnabledUpdated(isEnabled);
     }
 
     /**
@@ -281,6 +308,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableLiquidityFee(bool isEnabled) public onlyOwner {
         _liquidityFeeEnabled = isEnabled;
+        emit LiquidityFeeEnabledUpdated(isEnabled);
     }
 
     /**
@@ -295,6 +323,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableArchaFee(bool isEnabled) public onlyOwner {
         _archaFeeEnabled = isEnabled;
+        emit ArchaFeeEnabledUpdated(isEnabled);
     }
 
     /**
@@ -309,6 +338,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableBurnFee(bool isEnabled) public onlyOwner {
         _burnFeeEnabled = isEnabled;
+        emit BurnFeeEnabledUpdated(isEnabled);
     }
 
     /**
@@ -323,6 +353,7 @@ contract ScratchToken is Context, IERC20, Ownable {
       */
     function enableTokenStabilityProtection(bool isEnabled) public onlyOwner {
         _tokenStabilityProtectionEnabled = isEnabled;
+        emit TokenStabilityProtectionEnabledUpdated(isEnabled);
     }
 
     // Fees
@@ -529,6 +560,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                     else {
                         // Swap for eth
                         _swapTokensForEth(devFee + _devFeePendingSwap, _developmentWallet);
+                        emit Transfer(sender, _developmentWallet, devFee + _devFeePendingSwap);
                         _devFeePendingSwap = 0;
                     }
                 }
@@ -546,6 +578,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                     else {
                         // Swap for eth
                         _swapTokensForEth(opsFee + _opsFeePendingSwap, _operationsWallet);
+                        emit Transfer(sender, _operationsWallet, opsFee + _opsFeePendingSwap);
                         _opsFeePendingSwap = 0;
                     }
                 }
@@ -574,6 +607,7 @@ contract ScratchToken is Context, IERC20, Ownable {
                         } else if (_liquidityWallet != address(0)) {
                             // Send to liquidity wallet
                             _swapTokensForEth(swapAndLiquifyAmount, _liquidityWallet);
+                            emit Transfer(sender, _liquidityWallet, swapAndLiquifyAmount);
                             _liquidityFeePendingSwap = 0;
                         } else {
                             // Keep for later
@@ -587,7 +621,7 @@ contract ScratchToken is Context, IERC20, Ownable {
             if(_burnFeeEnabled && extraBurnFee > 0) {
                 burnFee = extraBurnFee;
                 _totalSupply -= burnFee;
-                emit Transfer(sender, _BURN_ADDRESS, burnFee);
+                emit Transfer(sender, address(0), amount);
             }
             // Final transfer amount
             uint256 totalFees = devFee + liquidityFee + opsFee + archaFee + burnFee;
@@ -801,30 +835,6 @@ contract ScratchToken is Context, IERC20, Ownable {
         _totalSupply += amount;
         _balances[account] += amount;
         emit Transfer(address(0), account, amount);
-    }
-
-    /**
-     * @dev Destroys `amount` tokens from `account`, reducing the
-     * total supply.
-     *
-     * Emits a {Transfer} event with `to` set to the zero address.
-     *
-     * Requirements:
-     *
-     * - `account` cannot be the zero address.
-     * - `account` must have at least `amount` tokens.
-     */
-    function _burn(address account, uint256 amount) internal {
-        require(account != address(0), "ERC20: burn from the zero address");
-
-        uint256 accountBalance = _balances[account];
-        require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
-        unchecked {
-            _balances[account] = accountBalance - amount;
-        }
-        _totalSupply -= amount;
-
-        emit Transfer(account, address(0), amount);
     }
 
 }

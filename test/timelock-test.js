@@ -29,6 +29,7 @@ describe("FoundersTimelock", function () {
     // Deploy token
     const Token = await ethers.getContractFactory("ScratchToken");
     token = await Token.deploy(
+      owner.address,
       founder1.address,
       addrs[0].address,
       addrs[1].address,

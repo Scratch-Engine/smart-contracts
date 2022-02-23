@@ -13,7 +13,7 @@ const uniswapV2PairAbi = require("./abi/IUniswapV2Pair.json").abi;
 const uniswapV2RouterAddress = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
 describe("Scratch Token", function () {
-  let owner;
+  let deployer;
   let addr1;
   let addr2;
   let addrEmpty;
@@ -29,6 +29,7 @@ describe("Scratch Token", function () {
   let newWallet;
   let lpWallet;
   let liquidityWallet;
+  let owner;
   let addrs;
 
   let token;
@@ -49,7 +50,7 @@ describe("Scratch Token", function () {
     ]);
     // Get signers
     [
-      owner,
+      deployer,
       addr1,
       addr2,
       founder1,
@@ -65,11 +66,13 @@ describe("Scratch Token", function () {
       addrEmpty,
       newWallet,
       liquidityWallet,
+      owner,
       ...addrs
     ] = await ethers.getSigners();
     // Deploy contract
     const Token = await ethers.getContractFactory("ScratchToken");
     token = await Token.deploy(
+      owner.address,
       founder1.address,
       founder2.address,
       founder3.address,
@@ -85,7 +88,7 @@ describe("Scratch Token", function () {
   });
 
   describe("Deployment", function () {
-    it("Deployer is the owner", async () => {
+    it("Transfers ownship after deployment to the owner", async () => {
       expect(await token.owner()).to.equal(owner.address);
     });
 
@@ -209,7 +212,7 @@ describe("Scratch Token", function () {
   describe("Transactions", function () {
     it("Transfers tokens between accounts", async function () {
       // Transfer 50 tokens from owner to addr1
-      await token.transfer(addr1.address, 50);
+      await token.connect(owner).transfer(addr1.address, 50);
       expect(await token.balanceOf(addr1.address)).to.equal(50);
 
       // Transfer 50 tokens from addr1 to addr2
@@ -241,10 +244,10 @@ describe("Scratch Token", function () {
       const initialOwnerBalance = await token.balanceOf(owner.address);
 
       // Transfer 100 tokens from owner to addr1.
-      await token.transfer(addr1.address, 100);
+      await token.connect(owner).transfer(addr1.address, 100);
 
       // Transfer another 50 tokens from owner to addr2.
-      await token.transfer(addr2.address, 50);
+      await token.connect(owner).transfer(addr2.address, 50);
 
       // Check balances.
       const finalOwnerBalance = await token.balanceOf(owner.address);
@@ -258,54 +261,17 @@ describe("Scratch Token", function () {
     });
   });
 
-  // describe("Fees", function () {
-  //   it("Does not take fees when owner is involved", async function () {
-  //     const initialOwnerBalance = ethers.BigNumber.from(
-  //       await token.balanceOf(owner.address)
-  //     );
-  //     // Transfer 50 tokens from owner to addr1
-  //     await token.transfer(addr1.address, 50);
-  //     expect(await token.balanceOf(addr1.address)).to.equal(50);
-  //     // Transfer 50 tokens back from addr1 to owner
-  //     await token.connect(addr1).transfer(owner.address, 50);
-  //     expect(await token.balanceOf(owner.address)).to.equal(
-  //       initialOwnerBalance
-  //     );
-  //   });
-  //   it("Takes 6% total fee between transfers", async function () {
-  //     await token.transfer(addr1.address, 100);
-  //     expect(await token.balanceOf(addr2.address)).to.equal(0);
-  //     // Send 100 tokens from addr1 to addr2
-  //     await token.connect(addr1).transfer(addr2.address, 100);
-  //     // Assert fees were applied
-  //     expect((await token.balanceOf(addr2.address)).toNumber()).to.equal(94);
-  //   });
-
-  //   it("Sends 1% fee to archa wallet", async function () {
-  //     const initialBalance = ethers.BigNumber.from(
-  //       await token.balanceOf(archaWallet.address)
-  //     );
-  //     await token.transfer(addr1.address, 100);
-  //     // Send 100 tokens from addr1 to addr2
-  //     await token.connect(addr1).transfer(addr2.address, 100);
-  //     // Assert wallet got the fees
-  //     expect(await token.balanceOf(archaWallet.address)).to.equal(
-  //       initialBalance.add(1)
-  //     );
-  //   });
-  // });
-
   describe("Uniswap Transactions", function () {
     const scratchForLiquidity = ethers.BigNumber.from("100000000000000000"); // 10**8 Scratch
     const ethForLiquidity = ethers.BigNumber.from("100000000000000000000"); // 100 ETH
     beforeEach(async function () {
       // Enable all fees
-      await token.enableDevFee(true);
-      await token.enableOpsFee(true);
-      await token.enableLiquidityFee(true);
-      await token.enableArchaFee(true);
-      await token.enableBurnFee(true);
-      await token.enableTokenStabilityProtection(true);
+      await token.connect(owner).enableDevFee(true);
+      await token.connect(owner).enableOpsFee(true);
+      await token.connect(owner).enableLiquidityFee(true);
+      await token.connect(owner).enableArchaFee(true);
+      await token.connect(owner).enableBurnFee(true);
+      await token.connect(owner).enableTokenStabilityProtection(true);
       // Deploy uniswap pair
       const uniswapV2Router = new ethers.Contract(
         uniswapV2RouterAddress,
@@ -315,14 +281,16 @@ describe("Scratch Token", function () {
 
       // Add initial liquidity (1 ETH = 10^5 tokens)
       /// With MINIMUM_LIQUIDITY = 10**3 and amount0 * amount1 > MINIMUM_LIQUIDITY**2, one can calculate that this requirement is fulfilled when the pair address holds just more of 1000 wei of each token.
-      await token.approve(uniswapV2Router.address, scratchForLiquidity);
+      await token
+        .connect(owner)
+        .approve(uniswapV2Router.address, scratchForLiquidity);
       // await token.approve(pairAddress, scratchForLiquidity);
 
       // console.log("Scratch: " + (await token.balanceOf(owner.address)));
       // console.log("Eth: " + (await owner.getBalance()));
 
       // Add the ETH<>Token pair to the pool.
-      await uniswapV2Router.addLiquidityETH(
+      await uniswapV2Router.connect(owner).addLiquidityETH(
         token.address,
         scratchForLiquidity,
         0, // ignore slippage
@@ -350,7 +318,7 @@ describe("Scratch Token", function () {
       //   await token.uniswapV2Pair()
       // );
       // console.log(await uniswapV2Pair.getReserves());
-      await token.transfer(signer.address, amount);
+      await token.connect(owner).transfer(signer.address, amount);
       // Sell tokens on Uniswap
       const path = [token.address, uniswapV2Router.WETH()];
       await token.connect(signer).approve(uniswapV2RouterAddress, amount);
@@ -436,8 +404,8 @@ describe("Scratch Token", function () {
     }
 
     it("Sell sends 2% fee to dev wallet in ETH", async function () {
-      await token.enableOpsFee(false);
-      await token.enableLiquidityFee(false);
+      await token.connect(owner).enableOpsFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
       const initialBalance = await devWallet.getBalance();
       const amount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
       // Calculate 2% ETH tax
@@ -455,8 +423,8 @@ describe("Scratch Token", function () {
     });
 
     it("Sell sends 1% fee to ops wallet in ETH", async function () {
-      await token.enableDevFee(false);
-      await token.enableLiquidityFee(false);
+      await token.connect(owner).enableDevFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
       const initialBalance = ethers.BigNumber.from(
         await opsWallet.getBalance()
       );
@@ -475,13 +443,13 @@ describe("Scratch Token", function () {
     });
 
     it("Sell sends 2% fee to liquidity wallet in ETH when set and SwapAndLiquify is disabled", async function () {
-      await token.enableDevFee(false);
-      await token.enableOpsFee(false);
+      await token.connect(owner).enableDevFee(false);
+      await token.connect(owner).enableOpsFee(false);
       const initialBalance = await liquidityWallet.getBalance();
       const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
       // Set Liquidity to go to wallet
-      await token.setLiquidityWallet(liquidityWallet.address);
-      await token.enableSwapAndLiquify(false);
+      await token.connect(owner).setLiquidityWallet(liquidityWallet.address);
+      await token.connect(owner).enableSwapAndLiquify(false);
       // Calculate 2% ETH tax
       const taxEthPrice = await getEthPriceForScratch(
         amount.mul("2").div("100")
@@ -499,8 +467,8 @@ describe("Scratch Token", function () {
       const initialBalance = await liquidityWallet.getBalance();
       const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
       // Set Liquidity wallet
-      await token.setLiquidityWallet(liquidityWallet.address);
-      await token.enableSwapAndLiquify(true);
+      await token.connect(owner).setLiquidityWallet(liquidityWallet.address);
+      await token.connect(owner).enableSwapAndLiquify(true);
       // Perform Sell
       await sellTokenOnUniswap(addr1, amount);
       // Assert wallet did not get more eth
@@ -511,15 +479,15 @@ describe("Scratch Token", function () {
       const initialBalance = await liquidityWallet.getBalance();
       const amount = ethers.BigNumber.from("1000000000000000"); // 10**6 Scratch
       // Set Liquidity wallet
-      await token.setLiquidityWallet(
-        "0x0000000000000000000000000000000000000000"
-      );
-      await token.enableSwapAndLiquify(false);
+      await token
+        .connect(owner)
+        .setLiquidityWallet("0x0000000000000000000000000000000000000000");
+      await token.connect(owner).enableSwapAndLiquify(false);
       // Perform Sell
       await sellTokenOnUniswap(addr1, amount);
       // Assert wallet did not get more eth
       expect(initialBalance).to.equal(await liquidityWallet.getBalance());
-      expect(await token.liquidityFeePendingSwap()).to.equal(
+      expect(await token.connect(owner).liquidityFeePendingSwap()).to.equal(
         amount.mul("2").div("100")
       );
     });
@@ -538,9 +506,9 @@ describe("Scratch Token", function () {
     });
 
     it("Buy sends 2% fee to dev wallet in ETH", async function () {
-      await token.enableOpsFee(false);
-      await token.enableLiquidityFee(false);
-      await token.enableArchaFee(false);
+      await token.connect(owner).enableOpsFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
+      await token.connect(owner).enableArchaFee(false);
       const initialBalance = ethers.BigNumber.from(
         await devWallet.getBalance()
       );
@@ -551,9 +519,9 @@ describe("Scratch Token", function () {
       // Perform buy
       await buyTokenOnUniswap(addr1, buyAmount);
       // Assert dev fee pending is ~2%
-      expect(ethers.BigNumber.from(await token.devFeePendingSwap())).to.equal(
-        scratchFromBuy.mul("2").div("100")
-      );
+      expect(
+        ethers.BigNumber.from(await token.connect(owner).devFeePendingSwap())
+      ).to.equal(scratchFromBuy.mul("2").div("100"));
       // Perform sell (with same amount) to trigger the swap
       const sellAmount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
       const combinedTaxEthPrice = ethers.BigNumber.from(
@@ -570,9 +538,9 @@ describe("Scratch Token", function () {
     });
 
     it("Buy sends 1% fee to ops wallet in ETH", async function () {
-      await token.enableDevFee(false);
-      await token.enableLiquidityFee(false);
-      await token.enableArchaFee(false);
+      await token.connect(owner).enableDevFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
+      await token.connect(owner).enableArchaFee(false);
       const initialBalance = ethers.BigNumber.from(
         await opsWallet.getBalance()
       );
@@ -583,9 +551,9 @@ describe("Scratch Token", function () {
       // Perform buy
       await buyTokenOnUniswap(addr1, buyAmount);
       // Assert ops fee pending is ~1%
-      expect(ethers.BigNumber.from(await token.opsFeePendingSwap())).to.equal(
-        scratchFromBuy.mul("1").div("100")
-      );
+      expect(
+        ethers.BigNumber.from(await token.connect(owner).opsFeePendingSwap())
+      ).to.equal(scratchFromBuy.mul("1").div("100"));
       // Perform sell (with same amount) to trigger the swap
       const sellAmount = ethers.BigNumber.from("100000000000000"); // 10**5 Scratch
       const combinedTaxEthPrice = ethers.BigNumber.from(
@@ -602,9 +570,9 @@ describe("Scratch Token", function () {
     });
 
     it("Buy sends 1% fee to archa wallet in SCRATCH", async function () {
-      await token.enableDevFee(false);
-      await token.enableOpsFee(false);
-      await token.enableLiquidityFee(false);
+      await token.connect(owner).enableDevFee(false);
+      await token.connect(owner).enableOpsFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
       const initialBalance = await token.balanceOf(archaWallet.address);
       const buyAmount = ethers.BigNumber.from("100000000000000"); // 0.0001 ETH
       const scratchFromBuy = await getScratchPriceForEth(buyAmount);
@@ -652,9 +620,9 @@ describe("Scratch Token", function () {
       });
 
       it("Sell sends 2% + 5% to Dev in ETH", async function () {
-        await token.enableOpsFee(false);
-        await token.enableLiquidityFee(false);
-        await token.enableArchaFee(false);
+        await token.connect(owner).enableOpsFee(false);
+        await token.connect(owner).enableLiquidityFee(false);
+        await token.connect(owner).enableArchaFee(false);
         const initialBalance = await devWallet.getBalance();
         // Calculate 7% ETH tax
         const taxEthPrice = await getEthPriceForScratch(
@@ -671,12 +639,12 @@ describe("Scratch Token", function () {
       });
 
       it("Sell sends 2% + 10% to liquidity wallet in ETH when set and SwapAndLiquify is disabled", async function () {
-        await token.enableDevFee(false);
-        await token.enableOpsFee(false);
+        await token.connect(owner).enableDevFee(false);
+        await token.connect(owner).enableOpsFee(false);
         const initialBalance = await liquidityWallet.getBalance();
         // Set Liquidity to go to wallet
-        await token.setLiquidityWallet(liquidityWallet.address);
-        await token.enableSwapAndLiquify(false);
+        await token.connect(owner).setLiquidityWallet(liquidityWallet.address);
+        await token.connect(owner).enableSwapAndLiquify(false);
         // Calculate 2% ETH tax
         const taxEthPrice = await getEthPriceForScratch(
           amountToTriggerTSP.mul("12").div("100")
@@ -715,13 +683,13 @@ describe("Scratch Token", function () {
       expect(
         token.connect(addr1).setArchaWallet(newWallet.address)
       ).to.be.revertedWith("Ownable: caller is not the owner");
-      await expect(token.setArchaWallet(newWallet.address)).to.not.be.reverted;
+      await expect(token.connect(owner).setArchaWallet(newWallet.address)).to.not.be.reverted;
     });
     it("Changes the Archa Wallet", async function () {
       await expect(token.connect(addr1).setArchaWallet(newWallet.address)).to.be
         .reverted;
       expect(await token.archaWallet()).to.equal(archaWallet.address);
-      await token.setArchaWallet(newWallet.address);
+      await token.connect(owner).setArchaWallet(newWallet.address);
       expect(await token.archaWallet()).to.equal(newWallet.address);
     });
     it("Excludes from fees", async function () {
@@ -730,21 +698,22 @@ describe("Scratch Token", function () {
       expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
         true
       );
-      await token.excludeFromFees(archaWallet.address, false);
+      await token.connect(owner).excludeFromFees(archaWallet.address, false);
       expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
         false
       );
-      await token.excludeFromFees(archaWallet.address, true);
+      await token.connect(owner).excludeFromFees(archaWallet.address, true);
       expect(await token.isExcludedFromFees(archaWallet.address)).to.equal(
         true
       );
     });
     it("Toggles SwapAndLiquify", async function () {
+      expect(await token.swapAndLiquifyEnabled()).to.equal(true);
       await expect(token.connect(addr1).enableSwapAndLiquify(false)).to.be
         .reverted;
-      await token.enableSwapAndLiquify(false);
+      await token.connect(owner).enableSwapAndLiquify(false);
       expect(await token.swapAndLiquifyEnabled()).to.equal(false);
-      await token.enableSwapAndLiquify(true);
+      await token.connect(owner).enableSwapAndLiquify(true);
       expect(await token.swapAndLiquifyEnabled()).to.equal(true);
     });
     it("Changes the Liquidity Wallet", async function () {
@@ -753,57 +722,57 @@ describe("Scratch Token", function () {
       expect(await token.liquidityWallet()).to.equal(
         "0x0000000000000000000000000000000000000000"
       );
-      await token.setLiquidityWallet(newWallet.address);
+      await token.connect(owner).setLiquidityWallet(newWallet.address);
       expect(await token.liquidityWallet()).to.equal(newWallet.address);
     });
     it("Enables dev fee", async function () {
       await expect(token.connect(addr1).enableDevFee(false)).to.be.reverted;
       expect(await token.devFeeEnabled()).to.equal(true);
-      await token.enableDevFee(false);
+      await token.connect(owner).enableDevFee(false);
       expect(await token.devFeeEnabled()).to.equal(false);
-      await token.enableDevFee(true);
+      await token.connect(owner).enableDevFee(true);
       expect(await token.devFeeEnabled()).to.equal(true);
     });
     it("Enables ops fee", async function () {
       await expect(token.connect(addr1).enableOpsFee(false)).to.be.reverted;
       expect(await token.opsFeeEnabled()).to.equal(true);
-      await token.enableOpsFee(false);
+      await token.connect(owner).enableOpsFee(false);
       expect(await token.opsFeeEnabled()).to.equal(false);
-      await token.enableOpsFee(true);
+      await token.connect(owner).enableOpsFee(true);
       expect(await token.opsFeeEnabled()).to.equal(true);
     });
     it("Enables archa fee", async function () {
       await expect(token.connect(addr1).enableArchaFee(false)).to.be.reverted;
       expect(await token.archaFeeEnabled()).to.equal(true);
-      await token.enableArchaFee(false);
+      await token.connect(owner).enableArchaFee(false);
       expect(await token.archaFeeEnabled()).to.equal(false);
-      await token.enableArchaFee(true);
+      await token.connect(owner).enableArchaFee(true);
       expect(await token.archaFeeEnabled()).to.equal(true);
     });
     it("Enables liquidity fee", async function () {
       await expect(token.connect(addr1).enableLiquidityFee(false)).to.be
         .reverted;
       expect(await token.liquidityFeeEnabled()).to.equal(true);
-      await token.enableLiquidityFee(false);
+      await token.connect(owner).enableLiquidityFee(false);
       expect(await token.liquidityFeeEnabled()).to.equal(false);
-      await token.enableLiquidityFee(true);
+      await token.connect(owner).enableLiquidityFee(true);
       expect(await token.liquidityFeeEnabled()).to.equal(true);
     });
     it("Enables burn fee", async function () {
       await expect(token.connect(addr1).enableBurnFee(false)).to.be.reverted;
       expect(await token.burnFeeEnabled()).to.equal(true);
-      await token.enableBurnFee(false);
+      await token.connect(owner).enableBurnFee(false);
       expect(await token.burnFeeEnabled()).to.equal(false);
-      await token.enableBurnFee(true);
+      await token.connect(owner).enableBurnFee(true);
       expect(await token.burnFeeEnabled()).to.equal(true);
     });
     it("Enables token stability protection", async function () {
       await expect(token.connect(addr1).enableTokenStabilityProtection(false))
         .to.be.reverted;
       expect(await token.tokenStabilityProtectionEnabled()).to.equal(true);
-      await token.enableTokenStabilityProtection(false);
+      await token.connect(owner).enableTokenStabilityProtection(false);
       expect(await token.tokenStabilityProtectionEnabled()).to.equal(false);
-      await token.enableTokenStabilityProtection(true);
+      await token.connect(owner).enableTokenStabilityProtection(true);
       expect(await token.tokenStabilityProtectionEnabled()).to.equal(true);
     });
   });

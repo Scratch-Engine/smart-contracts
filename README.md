@@ -74,17 +74,24 @@ Needs to be enabled in the `.env` file with `REPORT_GAS=true`.
 
 View the contract sizes by running `npx hardhat size-contracts`.
 
+### Other tools
+- **Flatten**: Create a single solidity file with all the created and imported contracts with `npx hardhat flatten > Output.sol`.
+- **Solhint**: The project includes the Solhint linter. You can also run it manually with `npx solhint **/*.sol`. To remove acknoledge warnings use `// solhint-disable-next-line` or `// // solhint-disable-line`.
+
 ## Deployment
 
-Deploy the contracts with the [deploy](scripts/deploy.js) script and specificy the network you want to use, either `rinkeby` or mainnet `ethereum`.
+Deploy the contracts with the [deploy](scripts/deploy.js) script and specificy the network you want to use, either testnet `rinkeby` or mainnet `ethereum`.
 
 Perform the following cleanup steps before deployment:
 - Remove `console.log` references and the **import** from *all* the contracts.
 - Set `OPTIMIZER_ENABLED` to `true` on the `.env` file.
+- Ensure that all wallet addresses inside the `deploy.js` script are correct.
 
 ```shell
 npx hardhat run scripts/deploy.js --network rinkeby
 ```
+
+> After deployment is done, write down the UniswapV2 pair address to create the Liquidity Pool and save the different addresses for the contracts deployed.
 
 ### Etherscan verification
 
