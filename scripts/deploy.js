@@ -16,7 +16,7 @@ const exchange = "0x2718758A03FdCe9e6e23D5c6b3Fd270b26E0cfC5";
 const dev = "0xD001C86042aef72F519A56d8Bb02D3b3c2c87B20";
 const ops = "0xa353de1C926e136B6ccb516f31c38cF40004aCCE";
 const archa = "0x7b8404be6480c44e25ee8c8446e408b1bfc92451";
-const owner = "0x64F66266DC29D3389AEDB2d460054647bD94c342";
+const owner = "0x1C6353C75B5e28D4fD17e76271A4784707500A8D";
 
 async function main() {
   console.log("Deploying...");

@@ -5,6 +5,7 @@ This project contains the Smart Contracts for the Scratch Engine Token.
 ## Get Started
 
 ### Running the project
+
 1. Clone the project.
 2. Run `npm install` to get all the dependencies.
 
@@ -21,6 +22,7 @@ In the above example, rinkeby corresponds with one of the Ethereum **Testnet**.
 > If you don't specify a network it will default to the `hardhat` network.
 
 #### Dotenv file
+
 Create a `.env` file on the root directory with the following parameters:
 ```
 # 3rd parties
@@ -75,8 +77,10 @@ Needs to be enabled in the `.env` file with `REPORT_GAS=true`.
 View the contract sizes by running `npx hardhat size-contracts`.
 
 ### Other tools
+
 - **Flatten**: Create a single solidity file with all the created and imported contracts with `npx hardhat flatten > Output.sol`.
 - **Solhint**: The project includes the Solhint linter. You can also run it manually with `npx solhint **/*.sol`. To remove acknoledge warnings use `// solhint-disable-next-line` or `// // solhint-disable-line`.
+- **Mythril**: A CLI security analysis tool to detect security vulneratilibities. Can be run on the flattened smart contract with `myth analyze Output.sol`. View complete instructions at [https://github.com/ConsenSys/mythril](https://github.com/ConsenSys/mythril)
 
 ## Deployment
 
