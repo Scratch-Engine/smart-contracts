@@ -202,37 +202,37 @@ contract ScratchToken is Context, IERC20, Ownable {
     }
 
     // Public owner methods
-    function isExcludedFromFees(address account) public view returns (bool) {
+    function isExcludedFromFees(address account) external view returns (bool) {
         return _isExcludedFromFee[account];
     }
 
-    function excludeFromFees(address account, bool isExcluded) public onlyOwner {
+    function excludeFromFees(address account, bool isExcluded) external onlyOwner {
         _isExcludedFromFee[account] = isExcluded;
     }
     /**
      * @dev Returns the address of the archa wallet.
      */
-    function archaWallet() public view returns (address) {
+    function archaWallet() external view returns (address) {
         return _archaWallet;
     }
     /**
      * @dev Sets the address of the archa wallet.
      */
-    function setArchaWallet(address newWallet) public onlyOwner {
+    function setArchaWallet(address newWallet) external onlyOwner {
         _archaWallet = newWallet;
     }
 
     /**
      * @dev Returns true if swap and liquify feature is enabled.
      */
-    function swapAndLiquifyEnabled() public view returns (bool) {
+    function swapAndLiquifyEnabled() external view returns (bool) {
         return _swapAndLiquifyEnabled;
     }
 
     /**
       * @dev Disables or enables the swap and liquify feature.
       */
-    function enableSwapAndLiquify(bool isEnabled) public onlyOwner {
+    function enableSwapAndLiquify(bool isEnabled) external onlyOwner {
         _swapAndLiquifyEnabled = isEnabled;
         emit SwapAndLiquifyEnabledUpdated(isEnabled);
     }
@@ -240,14 +240,14 @@ contract ScratchToken is Context, IERC20, Ownable {
      /**
       * @dev Updates the minimum amount of tokens before triggering Swap and Liquify
       */
-    function minTokensBeforeSwapAndLiquify() public view returns (uint256) {
+    function minTokensBeforeSwapAndLiquify() external view returns (uint256) {
         return _minTokensBeforeSwapAndLiquify;
     }
 
      /**
       * @dev Updates the minimum amount of tokens before triggering Swap and Liquify
       */
-    function setMinTokensBeforeSwapAndLiquify(uint256 minTokens) public onlyOwner {
+    function setMinTokensBeforeSwapAndLiquify(uint256 minTokens) external onlyOwner {
         require(minTokens < _totalSupply, "New value must be lower than total supply.");
         _minTokensBeforeSwapAndLiquify = minTokens;
         emit MinTokensBeforeSwapUpdated(minTokens);
@@ -255,13 +255,13 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns the address of the liquidity wallet, or 0 if not using it.
      */
-    function liquidityWallet() public view returns (address) {
+    function liquidityWallet() external view returns (address) {
         return _liquidityWallet;
     }
     /**
      * @dev Sets the address of the liquidity wallet.
      */
-    function setLiquidityWallet(address newWallet) public onlyOwner {
+    function setLiquidityWallet(address newWallet) external onlyOwner {
         _isExcludedFromFee[newWallet] = true;
         _liquidityWallet = newWallet;
     }
@@ -269,14 +269,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if dev fee is enabled.
      */
-    function devFeeEnabled() public view returns (bool) {
+    function devFeeEnabled() external view returns (bool) {
         return _devFeeEnabled;
     }
 
     /**
       * @dev Sets whether to collect or not the dev fee.
       */
-    function enableDevFee(bool isEnabled) public onlyOwner {
+    function enableDevFee(bool isEnabled) external onlyOwner {
         _devFeeEnabled = isEnabled;
         emit DevFeeEnabledUpdated(isEnabled);
     }
@@ -284,14 +284,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if ops fee is enabled.
      */
-    function opsFeeEnabled() public view returns (bool) {
+    function opsFeeEnabled() external view returns (bool) {
         return _opsFeeEnabled;
     }
 
     /**
       * @dev Sets whether to collect or not the ops fee.
       */
-    function enableOpsFee(bool isEnabled) public onlyOwner {
+    function enableOpsFee(bool isEnabled) external onlyOwner {
         _opsFeeEnabled = isEnabled;
         emit OpsFeeEnabledUpdated(isEnabled);
     }
@@ -299,14 +299,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if liquidity fee is enabled.
      */
-    function liquidityFeeEnabled() public view returns (bool) {
+    function liquidityFeeEnabled() external view returns (bool) {
         return _liquidityFeeEnabled;
     }
 
     /**
       * @dev Sets whether to collect or not the liquidity fee.
       */
-    function enableLiquidityFee(bool isEnabled) public onlyOwner {
+    function enableLiquidityFee(bool isEnabled) external onlyOwner {
         _liquidityFeeEnabled = isEnabled;
         emit LiquidityFeeEnabledUpdated(isEnabled);
     }
@@ -314,14 +314,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if archa fee is enabled.
      */
-    function archaFeeEnabled() public view returns (bool) {
+    function archaFeeEnabled() external view returns (bool) {
         return _archaFeeEnabled;
     }
 
     /**
       * @dev Sets whether to collect or not the archa fee.
       */
-    function enableArchaFee(bool isEnabled) public onlyOwner {
+    function enableArchaFee(bool isEnabled) external onlyOwner {
         _archaFeeEnabled = isEnabled;
         emit ArchaFeeEnabledUpdated(isEnabled);
     }
@@ -329,14 +329,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if the burn fee is enabled.
      */
-    function burnFeeEnabled() public view returns (bool) {
+    function burnFeeEnabled() external view returns (bool) {
         return _burnFeeEnabled;
     }
 
     /**
       * @dev Sets whether to enable or not the burn fee.
       */
-    function enableBurnFee(bool isEnabled) public onlyOwner {
+    function enableBurnFee(bool isEnabled) external onlyOwner {
         _burnFeeEnabled = isEnabled;
         emit BurnFeeEnabledUpdated(isEnabled);
     }
@@ -344,14 +344,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns true if token stability protection is enabled.
      */
-    function tokenStabilityProtectionEnabled() public view returns (bool) {
+    function tokenStabilityProtectionEnabled() external view returns (bool) {
         return _tokenStabilityProtectionEnabled;
     }
 
     /**
       * @dev Sets whether to enable the token stability protection.
       */
-    function enableTokenStabilityProtection(bool isEnabled) public onlyOwner {
+    function enableTokenStabilityProtection(bool isEnabled) external onlyOwner {
         _tokenStabilityProtectionEnabled = isEnabled;
         emit TokenStabilityProtectionEnabledUpdated(isEnabled);
     }
@@ -360,19 +360,19 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns the amount of the dev fee tokens pending swap
      */
-    function devFeePendingSwap() public onlyOwner view returns (uint256) {
+    function devFeePendingSwap() external onlyOwner view returns (uint256) {
         return _devFeePendingSwap;
     }
     /**
      * @dev Returns the amount of the ops fee tokens pending swap
      */
-    function opsFeePendingSwap() public onlyOwner view returns (uint256) {
+    function opsFeePendingSwap() external onlyOwner view returns (uint256) {
         return _opsFeePendingSwap;
     }
     /**
      * @dev Returns the amount of the liquidity fee tokens pending swap
      */
-    function liquidityFeePendingSwap() public onlyOwner view returns (uint256) {
+    function liquidityFeePendingSwap() external onlyOwner view returns (uint256) {
         return _liquidityFeePendingSwap;
     }
 
@@ -397,7 +397,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns the address of the Token<>WETH pair.
      */
-    function uniswapV2Pair() public view returns (address) {
+    function uniswapV2Pair() external view returns (address) {
         return address(_uniswapV2Pair);
     }
 
@@ -640,7 +640,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns the name of the token.
      */
-    function name() public pure virtual returns (string memory) {
+    function name() external pure virtual returns (string memory) {
         return _NAME;
     }
 
@@ -648,7 +648,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * @dev Returns the symbol of the token, usually a shorter version of the
      * name.
      */
-    function symbol() public pure virtual returns (string memory) {
+    function symbol() external pure virtual returns (string memory) {
         return _SYMBOL;
     }
 
@@ -661,7 +661,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * no way affects any of the arithmetic of the contract, including
      * {IERC20-balanceOf} and {IERC20-transfer}.
      */
-    function decimals() public pure returns (uint8) {
+    function decimals() external pure returns (uint8) {
         return _DECIMALS;
     }
 
@@ -675,14 +675,14 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev See {IERC20-balanceOf}.
      */
-    function balanceOf(address account) public view virtual override returns (uint256) {
+    function balanceOf(address account) external view virtual override returns (uint256) {
         return _balances[account];
     }
 
     /**
      * @dev Max supply of the token, cannot be increased after deployment.
      */
-    function maxSupply() public pure returns (uint256) {
+    function maxSupply() external pure returns (uint256) {
         return _MAX_SUPPLY;
     }
 
@@ -696,7 +696,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * - `recipient` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
+    function transfer(address recipient, uint256 amount) external override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
         return true;
     }
@@ -718,7 +718,7 @@ contract ScratchToken is Context, IERC20, Ownable {
         address sender,
         address recipient,
         uint256 amount
-    ) public virtual override returns (bool) {
+    ) external virtual override returns (bool) {
         _transfer(sender, recipient, amount);
 
         uint256 currentAllowance = _allowances[sender][_msgSender()];
@@ -740,7 +740,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      *
      * - `spender` cannot be the zero address.
      */
-    function approve(address spender, uint256 amount) public virtual override returns (bool) {
+    function approve(address spender, uint256 amount) external virtual override returns (bool) {
         _approve(_msgSender(), spender, amount);
         return true;
     }
@@ -748,7 +748,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev See {IERC20-allowance}.
      */
-    function allowance(address owner, address spender) public view virtual override returns (uint256) {
+    function allowance(address owner, address spender) external view virtual override returns (uint256) {
         return _allowances[owner][spender];
     }
 
@@ -764,7 +764,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      *
      * - `spender` cannot be the zero address.
      */
-    function increaseAllowance(address spender, uint256 addedValue) public virtual returns (bool) {
+    function increaseAllowance(address spender, uint256 addedValue) external virtual returns (bool) {
         _approve(_msgSender(), spender, _allowances[_msgSender()][spender] + addedValue);
         return true;
     }
@@ -783,7 +783,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * - `spender` must have allowance for the caller of at least
      * `subtractedValue`.
      */
-    function decreaseAllowance(address spender, uint256 subtractedValue) public virtual returns (bool) {
+    function decreaseAllowance(address spender, uint256 subtractedValue) external virtual returns (bool) {
         uint256 currentAllowance = _allowances[_msgSender()][spender];
         require(currentAllowance >= subtractedValue, "ERC20: decreased allowance below zero");
         unchecked {
