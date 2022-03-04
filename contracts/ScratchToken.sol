@@ -86,7 +86,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     bool private _tokenStabilityProtectionEnabled = true;
 
     mapping (address => bool) private _isExcludedFromFee;
-    address private _developmentWallet;
+    address private immutable _developmentWallet;
     address private _operationsWallet;
     address private _archaWallet;
     // Accumulated unswaped tokens from fee
@@ -98,7 +98,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     uint256 private constant _UNISWAP_DEADLINE_DELAY = 60; // in seconds
     IUniswapV2Router02 private _uniswapV2Router;
     IUniswapV2Pair private _uniswapV2Pair;
-    address private _lpTokensWallet;
+    address private immutable _lpTokensWallet;
     bool private _inSwap = false; // Whether a previous call of swap process is still in process.
     bool private _swapAndLiquifyEnabled = true;
     uint256 private _minTokensBeforeSwapAndLiquify = 1 * 10 ** _DECIMALS;

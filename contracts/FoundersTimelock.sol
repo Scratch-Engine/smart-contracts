@@ -34,7 +34,7 @@ contract FoundersTimelock is Ownable {
     event TokensReleased(address token, uint256 amount);
 
     // beneficiary of tokens after they are released
-    address private _beneficiary;
+    address private immutable _beneficiary;
 
     // ERC20 basic token contract being held
     IERC20 private immutable _token;
