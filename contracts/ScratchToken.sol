@@ -640,7 +640,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Returns the name of the token.
      */
-    function name() external pure virtual returns (string memory) {
+    function name() external view virtual returns (string memory) {
         return _NAME;
     }
 
@@ -648,7 +648,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * @dev Returns the symbol of the token, usually a shorter version of the
      * name.
      */
-    function symbol() external pure virtual returns (string memory) {
+    function symbol() external view virtual returns (string memory) {
         return _SYMBOL;
     }
 
@@ -661,7 +661,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * no way affects any of the arithmetic of the contract, including
      * {IERC20-balanceOf} and {IERC20-transfer}.
      */
-    function decimals() external pure returns (uint8) {
+    function decimals() external view returns (uint8) {
         return _DECIMALS;
     }
 
@@ -682,7 +682,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     /**
      * @dev Max supply of the token, cannot be increased after deployment.
      */
-    function maxSupply() external pure returns (uint256) {
+    function maxSupply() external view returns (uint256) {
         return _MAX_SUPPLY;
     }
 
