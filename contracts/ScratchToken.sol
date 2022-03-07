@@ -119,6 +119,11 @@ contract ScratchToken is Context, IERC20, Ownable {
     event BurnFeeEnabledUpdated(bool enabled);
     event TokenStabilityProtectionEnabledUpdated(bool enabled);
 
+    event ExclusionFromFeesUpdated(address account, bool isExcluded);
+    event ArchaWalletUpdated(address newWallet);
+    event LiquidityWalletUpdated(address newWallet);
+
+
     // Modifiers
     modifier lockTheSwap {
         require(!_inSwap, "Currently in swap.");
@@ -208,6 +213,7 @@ contract ScratchToken is Context, IERC20, Ownable {
 
     function excludeFromFees(address account, bool isExcluded) external onlyOwner {
         _isExcludedFromFee[account] = isExcluded;
+        emit ExclusionFromFeesUpdated(account, isExcluded);
     }
     /**
      * @dev Returns the address of the archa wallet.
@@ -220,6 +226,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      */
     function setArchaWallet(address newWallet) external onlyOwner {
         _archaWallet = newWallet;
+        emit ArchaWalletUpdated(newWallet);
     }
 
     /**
@@ -264,6 +271,7 @@ contract ScratchToken is Context, IERC20, Ownable {
     function setLiquidityWallet(address newWallet) external onlyOwner {
         _isExcludedFromFee[newWallet] = true;
         _liquidityWallet = newWallet;
+        emit LiquidityWalletUpdated(newWallet);
     }
 
     /**
