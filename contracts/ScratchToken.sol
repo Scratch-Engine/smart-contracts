@@ -517,7 +517,7 @@ contract ScratchToken is Context, IERC20, Ownable {
         // Indicates if fee should be deducted from transfer
         bool selling = recipient == address(_uniswapV2Pair);
         bool buying = sender == address(_uniswapV2Pair) && recipient != address(_uniswapV2Router);
-        // Take fees when selling or buying, and the sender or recipient are not excluded
+        // Take fees when selling or buying, and the sender and recipient are not excluded
         bool takeFee = (selling || buying) && (!_isExcludedFromFee[sender] && !_isExcludedFromFee[recipient]);
         // Transfer amount, it will take fees if takeFee is true
         _tokenTransfer(sender, recipient, amount, takeFee, buying);
