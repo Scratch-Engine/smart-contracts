@@ -148,7 +148,12 @@ contract ScratchToken is Context, IERC20, Ownable {
         address archaWallet_,
         address uniswapV2RouterAddress_
     ) {
-        
+
+        require(developmentWallet_ != address(0), "ScratchToken: set wallet to the zero address");
+        require(exchangeWallet_ != address(0), "ScratchToken: set wallet to the zero address");
+        require(operationsWallet_ != address(0), "ScratchToken: set wallet to the zero address");
+        require(archaWallet_ != address(0), "ScratchToken: set wallet to the zero address");
+
         // Exclude addresses from fee
         _isExcludedFromFee[owner] = true;
         _isExcludedFromFee[address(this)] = true;
@@ -225,6 +230,7 @@ contract ScratchToken is Context, IERC20, Ownable {
      * @dev Sets the address of the archa wallet.
      */
     function setArchaWallet(address newWallet) external onlyOwner {
+        require(newWallet != address(0), "ScratchToken: set wallet to the zero address");
         _archaWallet = newWallet;
         emit ArchaWalletUpdated(newWallet);
     }
