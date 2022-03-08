@@ -72,42 +72,42 @@ contract FoundersTimelock is Ownable {
     /**
      * @return the beneficiary of the tokens.
      */
-    function beneficiary() public view returns (address) {
+    function beneficiary() external view returns (address) {
         return _beneficiary;
     }
 
     /**
      * @return the cliff time of the token vesting.
      */
-    function cliff() public view returns (uint256) {
+    function cliff() external view returns (uint256) {
         return _cliff;
     }
 
     /**
      * @return the vesting frequency of the token vesting.
      */
-    function vestingPeriod() public view returns (uint256) {
+    function vestingPeriod() external view returns (uint256) {
         return _vestingPeriod;
     }
 
     /**
      * @return the duration of the token vesting.
      */
-    function vestingDuration() public view returns (uint256) {
+    function vestingDuration() external view returns (uint256) {
         return _vestingDuration;
     }
 
     /**
      * @return the amount of tokens released.
      */
-    function releasedBalance() public view returns (uint256) {
+    function releasedBalance() external view returns (uint256) {
         return _released;
     }
 
     /**
      * @return the amount of tokens still locked
      */
-    function lockedBalance() public view returns (uint256) {
+    function lockedBalance() external view returns (uint256) {
         return _token.balanceOf(address(this));
     }
 
@@ -115,7 +115,7 @@ contract FoundersTimelock is Ownable {
     /**
      * @notice Transfers vested tokens to beneficiary.
      */
-    function release() public {
+    function release() external {
         require (msg.sender == _beneficiary, "FoundersTimelock: only beneficiary can release tokens");
 
         uint256 unreleased = _releasableAmount();
